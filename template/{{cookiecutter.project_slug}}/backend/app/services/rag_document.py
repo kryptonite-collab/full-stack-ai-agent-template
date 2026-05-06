@@ -2,20 +2,25 @@
 """RAG document service (PostgreSQL async).
 
 Contains business logic for tracking RAG document ingestion, status updates,
-file downloads, and cascading deletions across DB, vector store, and file storage.
+file downloads, cascading deletions across DB+vector store+file storage, and
+upload-and-dispatch orchestration for the Celery/Taskiq/ARQ worker.
 """
 
 import logging
+import os
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
+from app.core.config import settings
+from app.core.exceptions import BadRequestError, NotFoundError
 from app.db.models.rag_document import RAGDocument
+from app.rag.config import get_supported_formats
 from app.repositories import rag_document_repo
-from app.schemas.rag import RAGTrackedDocumentItem, RAGTrackedDocumentList
+from app.schemas.rag import RAGIngestResponse, RAGTrackedDocumentItem, RAGTrackedDocumentList
 from app.services.file_storage import get_file_storage
 
 
@@ -80,6 +85,103 @@ class RAGDocumentService:
             filesize=filesize,
             filetype=filetype,
             storage_path=storage_path or "",
+        )
+
+    async def dispatch_upload(
+        self,
+        *,
+        collection_name: str,
+        file_data: bytes,
+        filename: str,
+        replace: bool,
+        vector_store: Any,
+    ) -> RAGIngestResponse:
+        """Validate, persist, and queue an uploaded file for ingestion.
+
+        Performs:
+          1. file-extension and size validation (against ``settings``);
+          2. permanent storage via ``FileStorage``;
+          3. RAGDocument tracking-record creation;
+          4. lazy creation of the target vector collection;
+          5. tmp-copy under ``MEDIA_DIR/_rag_tmp`` (shared with worker container);
+          6. dispatch of the ingestion task on the configured task backend.
+        """
+        allowed = get_supported_formats(getattr(settings, "PDF_PARSER", "pymupdf"))
+        max_size = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+
+        ext = Path(filename).suffix.lower()
+        if ext not in allowed:
+            raise BadRequestError(
+                message=f"File type '{ext}' not supported",
+                details={"ext": ext, "allowed": sorted(allowed)},
+            )
+        if len(file_data) > max_size:
+            raise BadRequestError(
+                message=f"File too large. Maximum {settings.MAX_UPLOAD_SIZE_MB}MB.",
+                details={"size": len(file_data), "max_mb": settings.MAX_UPLOAD_SIZE_MB},
+            )
+
+        storage = get_file_storage()
+        storage_path = await storage.save(f"rag/{collection_name}", filename, file_data)
+        rag_doc = await self.create_document(
+            collection_name=collection_name,
+            filename=filename,
+            filesize=len(file_data),
+            filetype=ext.lstrip("."),
+            storage_path=storage_path,
+        )
+        doc_id = rag_doc.id
+
+        # Ensure the target collection exists before the worker starts
+        await vector_store.create_collection(collection_name)
+
+        # Stage the upload in the volume shared with the worker container
+        tmp_dir = os.path.join(str(settings.MEDIA_DIR), "_rag_tmp")
+        os.makedirs(tmp_dir, exist_ok=True)
+        tmp_path = os.path.join(tmp_dir, f"{doc_id!s}{ext}")
+        with open(tmp_path, "wb") as f:
+            f.write(file_data)
+
+{%- if cookiecutter.use_celery or cookiecutter.use_taskiq %}
+        from app.worker.tasks.rag_tasks import ingest_document_task
+
+        ingest_document_task.delay(
+            rag_document_id=str(doc_id),
+            collection_name=collection_name,
+            filepath=tmp_path,
+            source_path=filename,
+            replace=replace,
+        )
+{%- elif cookiecutter.use_arq %}
+        from app.worker.arq_app import get_arq_pool
+
+        pool = await get_arq_pool()
+        await pool.enqueue_job(
+            "ingest_document",
+            str(doc_id),
+            collection_name,
+            tmp_path,
+            filename,
+            replace,
+        )
+{%- else %}
+        from app.worker.background.rag import ingest_document_in_background
+
+        await ingest_document_in_background(
+            rag_document_id=str(doc_id),
+            collection_name=collection_name,
+            filepath=tmp_path,
+            source_path=filename,
+            replace=replace,
+        )
+{%- endif %}
+
+        return RAGIngestResponse(
+            id=str(doc_id),
+            status="processing",
+            filename=filename,
+            collection=collection_name,
+            message="File accepted. Processing in background.",
         )
 
     async def complete_ingestion(

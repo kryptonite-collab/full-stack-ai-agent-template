@@ -1,6 +1,7 @@
 """RAG ingestion & sync tasks — processes documents asynchronously."""
 
 import asyncio
+import hashlib
 import json
 import logging
 import tempfile
@@ -8,6 +9,16 @@ from pathlib import Path
 from typing import Any
 
 from celery import shared_task
+
+from app.db.session import get_worker_db_context
+from app.rag.config import DocumentExtensions
+from app.rag.connectors import CONNECTOR_REGISTRY
+from app.rag.ingestion import IngestionService
+from app.repositories import sync_source_repo
+from app.services.rag_document import RAGDocumentService
+from app.services.rag_status import RAGStatusService
+from app.services.rag_sync import RAGSyncService
+from app.services.sync_source import SyncSourceService
 
 logger = logging.getLogger(__name__)
 
@@ -29,29 +40,36 @@ def ingest_document_task(
         )
     except Exception as exc:
         logger.error(f"Ingestion failed: {exc}")
-        asyncio.run(_update_status(rag_document_id, "error", error_message=str(exc)))
+        asyncio.run(_mark_ingestion_failed(rag_document_id, str(exc)))
         raise self.retry(exc=exc, countdown=30) from exc
 
 
 @shared_task(bind=True, max_retries=1, soft_time_limit=600, time_limit=720)  # type: ignore
 def sync_collection_task(
-    self: Any, sync_log_id: str, source: str, collection_name: str, mode: str, path: str
+    self: Any,
+    sync_log_id: str,
+    source: str,
+    collection_name: str,
+    mode: str,
+    path: str,
 ) -> dict[str, Any]:
     """Sync a collection from a local directory."""
     logger.info(f"Starting sync: {source} -> {collection_name} (mode={mode})")
     try:
-        return asyncio.run(_run_sync(sync_log_id, source, collection_name, mode, path))
+        return asyncio.run(_run_local_sync(sync_log_id, source, collection_name, mode, path))
     except Exception as exc:
         logger.error(f"Sync failed: {exc}")
-        asyncio.run(_update_sync_log(sync_log_id, "error", error_message=str(exc)))
+        asyncio.run(_mark_sync_failed(sync_log_id, str(exc)))
         raise self.retry(exc=exc, countdown=60) from exc
 
 
 @shared_task(bind=True, max_retries=2, soft_time_limit=600, time_limit=720)  # type: ignore
 def sync_single_source_task(
-    self: Any, source_id: str, sync_log_id: str | None = None
+    self: Any,
+    source_id: str,
+    sync_log_id: str | None = None,
 ) -> dict[str, Any]:
-    """Sync a single connector source. If sync_log_id provided, use existing log."""
+    """Sync a single connector source. If ``sync_log_id`` is provided, reuse existing log."""
     logger.info(f"Starting source sync: {source_id}")
     try:
         return asyncio.run(_run_source_sync(source_id, sync_log_id=sync_log_id))
@@ -63,133 +81,89 @@ def sync_single_source_task(
 @shared_task  # type: ignore
 def check_scheduled_syncs() -> None:
     """Periodic task: find sources due for sync and dispatch individual tasks."""
+    asyncio.run(_dispatch_due_syncs())
 
-    async def _check() -> None:
-        from app.db.session import get_worker_db_context
-        from app.repositories import sync_source as sync_source_repo
 
-        async with get_worker_db_context() as db:
-            sources = await sync_source_repo.get_due_for_sync(db)
-            for source in sources:
-                sync_single_source_task.delay(str(source.id))
-            logger.info(f"Scheduled sync check: dispatched {len(sources)} source(s)")
-
-    asyncio.run(_check())
+async def _dispatch_due_syncs() -> None:
+    async with get_worker_db_context() as db:
+        sources = await sync_source_repo.get_due_for_sync(db)
+    for source in sources:
+        sync_single_source_task.delay(str(source.id))
+    logger.info("scheduled_sync_dispatched", extra={"count": len(sources)})
 
 
 async def _run_ingestion(
-    rag_document_id: str, collection_name: str, filepath: str, source_path: str, replace: bool
+    rag_document_id: str,
+    collection_name: str,
+    filepath: str,
+    source_path: str,
+    replace: bool,
 ) -> dict[str, Any]:
-    from app.core.config import settings
-    from app.db.session import get_worker_db_context
-    from app.rag.documents import DocumentProcessor
-    from app.rag.embeddings import EmbeddingService
-    from app.rag.ingestion import IngestionService
-    from app.rag.vectorstore import MilvusVectorStore as VectorStore
-    from app.services.rag_document import RAGDocumentService
+    ingestion_service = IngestionService.from_settings()
 
-    rag_settings = settings.rag
-    embed_service = EmbeddingService(settings=rag_settings)
-    vector_store = VectorStore(settings=rag_settings, embedding_service=embed_service)
-    processor = DocumentProcessor(settings=rag_settings)
-    ingestion_service = IngestionService(processor=processor, vector_store=vector_store)
-
-    file_path = Path(filepath)
     try:
         result = await ingestion_service.ingest_file(
-            filepath=file_path,
+            filepath=Path(filepath),
             collection_name=collection_name,
             replace=replace,
             source_path=source_path,
         )
-        async with get_worker_db_context() as db:
-            await RAGDocumentService(db).complete_ingestion(
-                rag_document_id, vector_document_id=result.document_id
-            )
-        await _notify_ws(rag_document_id, "done", source_path)
-        logger.info(f"Ingestion complete: {source_path}")
-        return {"status": "done", "document_id": result.document_id, "filename": source_path}
-    except Exception as e:
-        await _update_status(rag_document_id, "error", error_message=str(e))
+    except Exception as exc:
+        await _mark_ingestion_failed(rag_document_id, str(exc))
         raise
 
+    async with get_worker_db_context() as db:
+        await RAGDocumentService(db).complete_ingestion(
+            rag_document_id, vector_document_id=result.document_id
+        )
+    await RAGStatusService().publish_status(
+        document_id=rag_document_id, status="done", filename=source_path
+    )
+    logger.info(f"Ingestion complete: {source_path}")
+    return {"status": "done", "document_id": result.document_id, "filename": source_path}
 
-async def _run_sync(
-    sync_log_id: str, source: str, collection_name: str, mode: str, path: str
+
+async def _run_local_sync(
+    sync_log_id: str,
+    source: str,
+    collection_name: str,
+    mode: str,
+    path: str,
 ) -> dict[str, Any]:
-    import hashlib
-
-    from app.core.config import settings
-    from app.db.session import get_worker_db_context
-    from app.rag.config import DocumentExtensions
-    from app.rag.documents import DocumentProcessor
-    from app.rag.embeddings import EmbeddingService
-    from app.rag.ingestion import IngestionService
-    from app.rag.vectorstore import MilvusVectorStore as VectorStore
-    from app.services.rag_document import RAGDocumentService
-    from app.services.rag_sync import RAGSyncService
-
-    rag_settings = settings.rag
-    embed_service = EmbeddingService(settings=rag_settings)
-    vector_store = VectorStore(settings=rag_settings, embedding_service=embed_service)
-    processor = DocumentProcessor(settings=rag_settings)
-    ingestion_service = IngestionService(processor=processor, vector_store=vector_store)
+    ingestion_service = IngestionService.from_settings()
 
     target_path = Path(path).resolve()
     if not target_path.exists():
-        await _update_sync_log(sync_log_id, "error", error_message=f"Path not found: {path}")
+        await _mark_sync_failed(sync_log_id, f"Path not found: {path}")
         return {"status": "error", "message": f"Path not found: {path}"}
 
-    if target_path.is_file():
-        files = [target_path]
-    else:
-        files = [f for f in target_path.rglob("*") if f.is_file() and not f.name.startswith(".")]
-
+    files = (
+        [target_path]
+        if target_path.is_file()
+        else [f for f in target_path.rglob("*") if f.is_file() and not f.name.startswith(".")]
+    )
     allowed = {ext.value for ext in DocumentExtensions}
     files = [f for f in files if f.suffix.lower() in allowed]
+
     ingested = updated = skipped = failed = 0
 
     for filepath in files:
-        # Check if sync was cancelled
-        async with get_worker_db_context() as db:
-            sync_log_check = await RAGSyncService(db).get_sync_log(sync_log_id)
-            if sync_log_check.status == "cancelled":
-                logger.info(f"Sync {sync_log_id} cancelled by user")
-                return {
-                    "status": "cancelled",
-                    "ingested": ingested,
-                    "updated": updated,
-                    "skipped": skipped,
-                    "failed": failed,
-                }
+        if await _sync_was_cancelled(sync_log_id):
+            logger.info(f"Sync {sync_log_id} cancelled by user")
+            return {
+                "status": "cancelled",
+                "ingested": ingested,
+                "updated": updated,
+                "skipped": skipped,
+                "failed": failed,
+            }
 
-        source_path = str(filepath.resolve())
-        if mode in ("new_only", "update_only"):
-            existing_id = await ingestion_service.find_existing(collection_name, source_path)
+        if mode in ("new_only", "update_only") and await _should_skip(
+            ingestion_service, mode, collection_name, filepath
+        ):
+            skipped += 1
+            continue
 
-            if mode == "new_only":
-                if existing_id:
-                    # File exists — check if content changed via hash
-                    file_hash = hashlib.sha256(filepath.read_bytes()).hexdigest()
-                    existing_hash = await ingestion_service.get_existing_hash(
-                        collection_name, source_path
-                    )
-                    if existing_hash and file_hash == existing_hash:
-                        skipped += 1
-                        continue
-                    # Hash changed — will re-ingest below
-
-            elif mode == "update_only":
-                if not existing_id:
-                    skipped += 1
-                    continue
-                file_hash = hashlib.sha256(filepath.read_bytes()).hexdigest()
-                existing_hash = await ingestion_service.get_existing_hash(
-                    collection_name, source_path
-                )
-                if existing_hash and file_hash == existing_hash:
-                    skipped += 1
-                    continue
         try:
             result = await ingestion_service.ingest_file(
                 filepath=filepath, collection_name=collection_name, replace=True
@@ -200,19 +174,20 @@ async def _run_sync(
                 else:
                     ingested += 1
                 async with get_worker_db_context() as db:
-                    doc = await RAGDocumentService(db).create_document(
+                    rag_doc_svc = RAGDocumentService(db)
+                    doc = await rag_doc_svc.create_document(
                         collection_name=collection_name,
                         filename=filepath.name,
                         filesize=filepath.stat().st_size,
                         filetype=filepath.suffix.lstrip(".").lower(),
                     )
-                    await RAGDocumentService(db).complete_ingestion(
+                    await rag_doc_svc.complete_ingestion(
                         str(doc.id), vector_document_id=result.document_id
                     )
             else:
                 failed += 1
-        except Exception as e:
-            logger.warning(f"Sync file error {filepath.name}: {e}")
+        except Exception as exc:
+            logger.warning(f"Sync file error {filepath.name}: {exc}")
             failed += 1
 
     async with get_worker_db_context() as db:
@@ -235,85 +210,76 @@ async def _run_sync(
     }
 
 
-async def _update_status(
-    rag_document_id: str, status: str, error_message: str | None = None
-) -> None:
-    from app.db.session import get_worker_db_context
-    from app.services.rag_document import RAGDocumentService
+async def _sync_was_cancelled(sync_log_id: str) -> bool:
+    async with get_worker_db_context() as db:
+        sync_log = await RAGSyncService(db).get_sync_log(sync_log_id)
+    return sync_log.status == "cancelled"
 
+
+async def _should_skip(
+    ingestion_service: IngestionService,
+    mode: str,
+    collection_name: str,
+    filepath: Path,
+) -> bool:
+    """Decide whether a file should be skipped under ``new_only``/``update_only`` modes.
+
+    Existence is checked via the ingestion service; identical content (same SHA-256)
+    is treated as a no-op to keep periodic syncs idempotent.
+    """
+    source_path = str(filepath.resolve())
+    existing_id = await ingestion_service.find_existing(collection_name, source_path)
+
+    if mode == "new_only":
+        if not existing_id:
+            return False
+        return await _content_unchanged(ingestion_service, collection_name, filepath, source_path)
+
+    # mode == "update_only"
+    if not existing_id:
+        return True
+    return await _content_unchanged(ingestion_service, collection_name, filepath, source_path)
+
+
+async def _content_unchanged(
+    ingestion_service: IngestionService,
+    collection_name: str,
+    filepath: Path,
+    source_path: str,
+) -> bool:
+    file_hash = hashlib.sha256(filepath.read_bytes()).hexdigest()
+    existing_hash = await ingestion_service.get_existing_hash(collection_name, source_path)
+    return bool(existing_hash) and existing_hash == file_hash
+
+
+async def _mark_ingestion_failed(rag_document_id: str, error_message: str) -> None:
     try:
         async with get_worker_db_context() as db:
-            doc_svc = RAGDocumentService(db)
-            if status == "error":
-                await doc_svc.fail_ingestion(
-                    rag_document_id, error_message=error_message or "Unknown error"
-                )
-            elif status == "done":
-                # vector_document_id required for complete_ingestion; callers
-                # set status="done" directly in _run_ingestion with the ID.
-                pass
-    except Exception as e:
-        logger.warning(f"Failed to update RAGDocument status: {e}")
+            await RAGDocumentService(db).fail_ingestion(
+                rag_document_id, error_message=error_message
+            )
+    except Exception as exc:
+        logger.warning(f"Failed to mark ingestion as failed: {exc}")
 
 
-async def _notify_ws(rag_document_id: str, status: str, filename: str) -> None:
-    try:
-        import json
-
-        import redis.asyncio as aioredis
-
-        from app.core.config import settings
-
-        r = aioredis.from_url(
-            f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DB}"
-        )  # type: ignore[no-untyped-call]
-        await r.publish(
-            "rag_status",
-            json.dumps(
-                {
-                    "document_id": rag_document_id,
-                    "status": status,
-                    "filename": filename,
-                }
-            ),
-        )
-        await r.aclose()
-    except Exception as e:
-        logger.warning(f"Failed to send WS notification: {e}")
-
-
-async def _update_sync_log(sync_log_id: str, status: str, error_message: str | None = None) -> None:
-    from app.db.session import get_worker_db_context
-    from app.services.rag_sync import RAGSyncService
-
+async def _mark_sync_failed(sync_log_id: str, error_message: str) -> None:
     try:
         async with get_worker_db_context() as db:
             await RAGSyncService(db).complete_sync(
-                sync_log_id, status=status, error_message=error_message
+                sync_log_id, status="error", error_message=error_message
             )
-    except Exception as e:
-        logger.warning(f"Failed to update SyncLog: {e}")
+    except Exception as exc:
+        logger.warning(f"Failed to mark sync as failed: {exc}")
 
 
 async def _run_source_sync(source_id: str, sync_log_id: str | None = None) -> dict[str, Any]:
-    """Core sync logic for connector-based sources (shared between all task frameworks).
+    """Core sync logic for connector-based sources (Google Drive, S3, etc.).
 
-    Fetches files from a remote connector (e.g. Google Drive, S3), downloads them
-    to a temporary directory, and ingests each into the vector store.
+    Fetches files from a remote connector, downloads them to a temporary directory, and
+    ingests each into the vector store.
     """
-    from app.core.config import settings
-    from app.db.session import get_worker_db_context
-    from app.rag.connectors import CONNECTOR_REGISTRY
-    from app.rag.documents import DocumentProcessor
-    from app.rag.embeddings import EmbeddingService
-    from app.rag.ingestion import IngestionService
-    from app.rag.vectorstore import MilvusVectorStore as VectorStore
-    from app.services.rag_sync import RAGSyncService
-    from app.services.sync_source import SyncSourceService
-
     async with get_worker_db_context() as db:
         source_svc = SyncSourceService(db)
-
         source = await source_svc.get_source(source_id)
         connector_cls = CONNECTOR_REGISTRY.get(source.connector_type)
         if not connector_cls:
@@ -326,7 +292,7 @@ async def _run_source_sync(source_id: str, sync_log_id: str | None = None) -> di
         collection_name = source.collection_name
         sync_mode = source.sync_mode
 
-        # Use existing SyncLog (from API trigger) or create new one (from scheduler)
+        # Reuse the SyncLog from the API trigger; otherwise the scheduler creates one
         if sync_log_id:
             log_id = sync_log_id
         else:
@@ -334,12 +300,7 @@ async def _run_source_sync(source_id: str, sync_log_id: str | None = None) -> di
             log_id = str(log.id)
 
     connector = connector_cls()
-    rag_settings = settings.rag
-    embed_service = EmbeddingService(settings=rag_settings)
-    vector_store = VectorStore(settings=rag_settings, embedding_service=embed_service)
-    processor = DocumentProcessor(settings=rag_settings)
-    ingestion_svc = IngestionService(processor=processor, vector_store=vector_store)
-
+    ingestion_svc = IngestionService.from_settings()
     ingested = skipped = failed = total = 0
 
     try:
@@ -357,11 +318,11 @@ async def _run_source_sync(source_id: str, sync_log_id: str | None = None) -> di
                         source_path=remote_file.source_path,
                     )
                     ingested += 1
-                except Exception as e:
-                    logger.warning(f"Failed to sync {remote_file.name}: {e}")
+                except Exception as exc:
+                    logger.warning(f"Failed to sync {remote_file.name}: {exc}")
                     failed += 1
-    except Exception as e:
-        logger.error(f"Source sync failed for {source_id}: {e}")
+    except Exception as exc:
+        logger.error(f"Source sync failed for {source_id}: {exc}")
         failed = max(failed, 1)
 
     async with get_worker_db_context() as db:
@@ -385,8 +346,14 @@ async def _run_source_sync(source_id: str, sync_log_id: str | None = None) -> di
             logger.error(f"Failed to update sync status for source {source_id}")
 
     logger.info(
-        f"Source sync complete: {source_id} — "
-        f"total={total}, ingested={ingested}, skipped={skipped}, failed={failed}"
+        "source_sync_complete",
+        extra={
+            "source_id": source_id,
+            "total": total,
+            "ingested": ingested,
+            "skipped": skipped,
+            "failed": failed,
+        },
     )
     return {
         "status": "done" if not failed else "error",

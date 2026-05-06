@@ -1,50 +1,43 @@
 {%- if cookiecutter.use_celery or cookiecutter.use_taskiq or cookiecutter.use_arq %}
 """Background tasks."""
 
+{%- if cookiecutter.enable_credits_system %}
+from app.worker.tasks.cleanup_tasks import cleanup_usage_events_task
+{%- endif %}
+{%- if cookiecutter.enable_email and cookiecutter.enable_billing %}
+from app.worker.tasks.email_tasks import send_trial_reminders_task
+{%- endif %}
+{%- if cookiecutter.enable_email and cookiecutter.enable_credits_system %}
+from app.worker.tasks.email_tasks import send_low_credits_alerts_task
+{%- endif %}
+{%- if cookiecutter.enable_rag %}
+from app.worker.tasks.rag_tasks import (
+    check_scheduled_syncs,
+    ingest_document_task,
 {%- if cookiecutter.use_celery %}
-from app.worker.tasks.examples import example_task, long_running_task
-{%- if cookiecutter.enable_rag %}
-from app.worker.tasks.rag_tasks import ingest_document_task, sync_single_source_task, check_scheduled_syncs
+    sync_collection_task,
 {%- endif %}
-{%- endif %}
-
-{%- if cookiecutter.use_taskiq %}
-from app.worker.tasks.taskiq_examples import example_task as taskiq_example_task
-from app.worker.tasks.taskiq_examples import long_running_task as taskiq_long_running_task
-{%- if cookiecutter.enable_rag %}
-from app.worker.tasks.rag_tasks import ingest_document_task  # noqa: F811
-from app.worker.tasks.rag_tasks import sync_single_source_task, check_scheduled_syncs  # noqa: F811
-{%- endif %}
-{%- endif %}
-
-{%- if cookiecutter.use_arq %}
-from app.worker.arq_app import example_task as arq_example_task
-from app.worker.arq_app import long_running_task as arq_long_running_task
+    sync_single_source_task,
+)
 {%- endif %}
 
 __all__ = [
-{%- if cookiecutter.use_celery %}
-    "example_task",
-    "long_running_task",
 {%- if cookiecutter.enable_rag %}
+    "check_scheduled_syncs",
     "ingest_document_task",
+{%- if cookiecutter.use_celery %}
+    "sync_collection_task",
+{%- endif %}
     "sync_single_source_task",
-    "check_scheduled_syncs",
 {%- endif %}
+{%- if cookiecutter.enable_credits_system %}
+    "cleanup_usage_events_task",
 {%- endif %}
-{%- if cookiecutter.use_taskiq %}
-    "taskiq_example_task",
-    "taskiq_long_running_task",
-{%- if cookiecutter.enable_rag %}
-    "sync_single_source_task",
-    "check_scheduled_syncs",
+{%- if cookiecutter.enable_email and cookiecutter.enable_billing %}
+    "send_trial_reminders_task",
 {%- endif %}
-{%- endif %}
-{%- if cookiecutter.use_arq %}
-    "arq_example_task",
-    "arq_long_running_task",
+{%- if cookiecutter.enable_email and cookiecutter.enable_credits_system %}
+    "send_low_credits_alerts_task",
 {%- endif %}
 ]
-{%- else %}
-# Background tasks not enabled
 {%- endif %}

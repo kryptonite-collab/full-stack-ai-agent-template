@@ -1,18 +1,20 @@
-"""UsageService — record AI usage events and debit credits."""
+"""UsageService — record AI usage events, debit credits, and prune old data."""
 
 from __future__ import annotations
 
 import logging
-
-logger = logging.getLogger(__name__)
 import uuid
+from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.repositories.usage_event as usage_repo
 from app.billing.credit_service import CreditService
 from app.billing.pricing import usage_to_credits
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class UsageService:
@@ -21,6 +23,17 @@ class UsageService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
         self._credit_svc = CreditService(db)
+
+    async def cleanup_old_events(self, *, retention_days: int) -> int:
+        """Delete usage events older than ``retention_days`` and refresh the daily matview.
+
+        The matview is refreshed concurrently so reads aren't blocked. Returns the
+        number of usage-event rows deleted.
+        """
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+        deleted = await usage_repo.delete_older_than(self.db, cutoff)
+        await self.db.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY mv_usage_daily"))
+        return deleted
 
     async def record(
         self,

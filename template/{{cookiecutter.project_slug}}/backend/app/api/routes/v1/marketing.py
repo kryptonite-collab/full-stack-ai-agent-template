@@ -1,39 +1,28 @@
 {%- if cookiecutter.enable_newsletter_signup %}
-"""Newsletter signup endpoint."""
+"""Marketing routes — newsletter signup."""
 
-import logging
 from typing import Any
 
 from fastapi import APIRouter, status
-from pydantic import BaseModel, EmailStr
 
-logger = logging.getLogger(__name__)
+from app.api.deps import NewsletterSvc
+from app.schemas.marketing import NewsletterSignupCreate, NewsletterSignupRead
 
 router = APIRouter()
 
 
-class NewsletterSignupIn(BaseModel):
-    email: EmailStr
-    name: str | None = None
-
-
-@router.post("/newsletter/signup", status_code=status.HTTP_201_CREATED)
-async def newsletter_signup(body: NewsletterSignupIn) -> Any:
+@router.post(
+    "/newsletter/signup",
+    response_model=NewsletterSignupRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def newsletter_signup(
+    data: NewsletterSignupCreate,
+    service: NewsletterSvc,
+) -> Any:
     """Subscribe an email to the newsletter."""
-    logger.info("newsletter_signup", extra={"email": body.email})
-{%- if cookiecutter.enable_email %}
-    try:
-        from app.email.service import get_email_service
-        email_svc = get_email_service()
-        await email_svc.send_newsletter_welcome(
-            to=body.email,
-            name=body.name or body.email,
-        )
-    except Exception:
-        logger.exception("newsletter_welcome_email_failed")
-{%- endif %}
-    return {"message": "Subscribed successfully", "email": body.email}
-
+    await service.subscribe(email=data.email, name=data.name)
+    return NewsletterSignupRead(email=data.email)
 {%- else %}
 """Marketing routes — not enabled."""
 {%- endif %}

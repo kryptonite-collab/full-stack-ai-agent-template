@@ -10,6 +10,9 @@ logger = logging.getLogger(__name__)
 
 {%- if cookiecutter.use_postgresql %}
 import uuid
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.repositories.usage_event as usage_repo
@@ -19,11 +22,22 @@ from app.core.config import settings
 
 
 class UsageService:
-    """Record a usage event and debit the corresponding credits."""
+    """Record a usage event, debit the corresponding credits, and prune old data."""
 
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
         self._credit_svc = CreditService(db)
+
+    async def cleanup_old_events(self, *, retention_days: int) -> int:
+        """Delete usage events older than ``retention_days`` and refresh the daily matview.
+
+        The matview is refreshed concurrently so reads are not blocked. Returns the
+        number of usage-event rows deleted.
+        """
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+        deleted = await usage_repo.delete_older_than(self.db, cutoff)
+        await self.db.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY mv_usage_daily"))
+        return deleted
 
     async def record(
         self,

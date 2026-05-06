@@ -1,15 +1,16 @@
-"""RAG API routes for collection management, search, document upload, and deletion."""
+"""RAG API routes — collection management, search, document upload, sync, status stream.
 
-import asyncio
-import logging
-import os
+Routes are HTTP plumbing only. Business logic, file I/O, Celery dispatch, and Redis
+pub/sub all live in their respective services. Domain exceptions raised by services are
+mapped to HTTP responses by the global exception handlers in
+``app.api.exception_handlers``; routes do not catch and re-wrap them.
+"""
+
 from collections.abc import AsyncIterable
-from pathlib import Path
 from typing import Any
 
-import redis.asyncio as aioredis
-from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, UploadFile, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, File, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from app.api.deps import (
@@ -17,12 +18,13 @@ from app.api.deps import (
     CurrentUser,
     IngestionSvc,
     RAGDocumentSvc,
+    RAGStatusSvc,
     RAGSyncSvc,
     RetrievalSvc,
     SyncSourceSvc,
     VectorStoreSvc,
 )
-from app.core.config import settings as app_settings
+from app.core.config import settings
 from app.core.exceptions import NotFoundError
 from app.rag.config import get_supported_formats
 from app.schemas.rag import (
@@ -47,14 +49,6 @@ from app.schemas.sync_source import (
     SyncSourceRead,
     SyncSourceUpdate,
 )
-from app.services.file_storage import get_file_storage
-from app.worker.tasks.rag_tasks import (
-    ingest_document_task,
-    sync_collection_task,
-    sync_single_source_task,
-)
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -62,7 +56,7 @@ router = APIRouter()
 @router.get("/supported-formats")
 async def get_supported_formats_endpoint() -> Any:
     """Return file formats supported by the current PDF parser configuration."""
-    parser_name = getattr(app_settings, "PDF_PARSER", "pymupdf")
+    parser_name = getattr(settings, "PDF_PARSER", "pymupdf")
     return {"parser": parser_name, "formats": sorted(get_supported_formats(parser_name))}
 
 
@@ -77,7 +71,9 @@ async def list_collections(
 
 
 @router.post(
-    "/collections/{name}", status_code=status.HTTP_201_CREATED, response_model=RAGMessageResponse
+    "/collections/{name}",
+    status_code=status.HTTP_201_CREATED,
+    response_model=RAGMessageResponse,
 )
 async def create_collection(
     name: str,
@@ -85,14 +81,15 @@ async def create_collection(
     _: CurrentAdmin,
 ) -> Any:
     """Create and initialize a new collection."""
-    try:
-        await vector_store.create_collection(name)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    await vector_store.create_collection(name)
     return RAGMessageResponse(message=f"Collection '{name}' created successfully.")
 
 
-@router.delete("/collections/{name}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+@router.delete(
+    "/collections/{name}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
 async def drop_collection(
     name: str,
     vector_store: VectorStoreSvc,
@@ -128,7 +125,7 @@ async def list_documents(
 async def search_documents(
     request: RAGSearchRequest,
     retrieval_service: RetrievalSvc,
-    current_user: CurrentUser,
+    _: CurrentUser,
     use_reranker: bool = Query(False, description="Whether to use reranking (if configured)"),
 ) -> Any:
     """Search for relevant document chunks. Supports multi-collection search."""
@@ -170,78 +167,34 @@ async def delete_document(
     """Delete a specific document by its ID from a collection."""
     success = await ingestion_service.remove_document(name, document_id)
     if not success:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+        raise NotFoundError(
+            message="Document not found",
+            details={"collection": name, "document_id": document_id},
+        )
 
 
 @router.post(
-    "/collections/{name}/ingest", response_model=RAGIngestResponse, response_model_exclude_none=True
+    "/collections/{name}/ingest",
+    response_model=RAGIngestResponse,
+    response_model_exclude_none=True,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def ingest_file(
     name: str,
-    background_tasks: BackgroundTasks,
     rag_doc_svc: RAGDocumentSvc,
-    ingestion_service: IngestionSvc,
     vector_store: VectorStoreSvc,
     _: CurrentAdmin,
     file: UploadFile = File(...),
     replace: bool = Query(False),
 ) -> Any:
-    """Upload and ingest a file into a collection. Tracks status in DB."""
-    ALLOWED = get_supported_formats(getattr(app_settings, "PDF_PARSER", "pymupdf"))
-    max_size = app_settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
-
-    filename = file.filename or "unknown"
-    ext = Path(filename).suffix.lower()
-    if ext not in ALLOWED:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File type '{ext}' not supported. Allowed: {', '.join(sorted(ALLOWED))}",
-        )
-
+    """Upload and queue a file for ingestion into a collection."""
     data = await file.read()
-    if len(data) > max_size:
-        raise HTTPException(
-            status_code=413, detail=f"File too large. Maximum {app_settings.MAX_UPLOAD_SIZE_MB}MB."
-        )
-
-    storage = get_file_storage()
-    storage_path = await storage.save(f"rag/{name}", filename, data)
-    rag_doc = await rag_doc_svc.create_document(
+    return await rag_doc_svc.dispatch_upload(
         collection_name=name,
-        filename=filename,
-        filesize=len(data),
-        filetype=ext.lstrip("."),
-        storage_path=storage_path,
-    )
-    doc_id = rag_doc.id
-
-    await vector_store.create_collection(name)
-
-    # Save to shared media volume (accessible by both app and worker containers)
-    tmp_dir = os.path.join(str(app_settings.MEDIA_DIR), "_rag_tmp")
-    os.makedirs(tmp_dir, exist_ok=True)
-    tmp_path = os.path.join(tmp_dir, f"{doc_id!s}{ext}")
-    with open(tmp_path, "wb") as f:
-        f.write(data)
-
-    # Dispatch async task
-    ingest_document_task.delay(
-        rag_document_id=str(doc_id),
-        collection_name=name,
-        filepath=tmp_path,
-        source_path=filename,
+        file_data=data,
+        filename=file.filename or "unknown",
         replace=replace,
-    )
-
-    return JSONResponse(
-        status_code=status.HTTP_202_ACCEPTED,
-        content={
-            "id": str(doc_id),
-            "status": "processing",
-            "filename": filename,
-            "collection": name,
-            "message": "File accepted. Processing in background.",
-        },
+        vector_store=vector_store,
     )
 
 
@@ -262,14 +215,15 @@ async def download_rag_document(
     _: CurrentAdmin,
 ) -> Any:
     """Download the original file."""
-    try:
-        file_path, filename, mime_type = await rag_doc_svc.get_download_info(doc_id)
-    except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=e.message) from e
+    file_path, filename, mime_type = await rag_doc_svc.get_download_info(doc_id)
     return FileResponse(path=file_path, filename=filename, media_type=mime_type)
 
 
-@router.delete("/documents/{doc_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+@router.delete(
+    "/documents/{doc_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
 async def delete_rag_document(
     doc_id: str,
     rag_doc_svc: RAGDocumentSvc,
@@ -277,11 +231,7 @@ async def delete_rag_document(
     _: CurrentAdmin,
 ) -> None:
     """Delete a document from SQL, vector store, and file storage."""
-
-    try:
-        await rag_doc_svc.delete_document(doc_id, ingestion_service)
-    except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=e.message) from e
+    await rag_doc_svc.delete_document(doc_id, ingestion_service)
 
 
 @router.post("/documents/{doc_id}/retry", response_model=RAGRetryResponse)
@@ -291,13 +241,7 @@ async def retry_ingestion(
     _: CurrentAdmin,
 ) -> Any:
     """Retry a failed document ingestion."""
-
-    try:
-        doc = await rag_doc_svc.retry_ingestion(doc_id)
-    except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=e.message) from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    doc = await rag_doc_svc.retry_ingestion(doc_id)
     return RAGRetryResponse(id=str(doc.id), status="processing", message="Retry queued")
 
 
@@ -315,24 +259,15 @@ async def list_sync_logs(
 @router.post("/sync/local", response_model=RAGSyncResponse)
 async def trigger_local_sync(
     request: RAGSyncRequest,
-    background_tasks: BackgroundTasks,
     rag_sync_svc: RAGSyncSvc,
     _: CurrentAdmin,
 ) -> Any:
     """Trigger a local directory sync via background task."""
-    sync_log = await rag_sync_svc.create_sync_log(
-        source="local",
-        collection_name=request.collection_name,
-        mode=request.mode,
-    )
-    sync_collection_task.delay(
-        sync_log_id=str(sync_log.id),
-        source="local",
+    sync_log = await rag_sync_svc.start_local_sync(
         collection_name=request.collection_name,
         mode=request.mode,
         path=request.path,
     )
-
     return RAGSyncResponse(
         id=str(sync_log.id),
         status="running",
@@ -347,13 +282,7 @@ async def cancel_sync(
     _: CurrentAdmin,
 ) -> Any:
     """Cancel a running sync operation."""
-
-    try:
-        await rag_sync_svc.cancel_sync(sync_id)
-    except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=e.message) from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    await rag_sync_svc.cancel_sync(sync_id)
     return RAGMessageResponse(message="Sync cancelled")
 
 
@@ -366,18 +295,18 @@ async def list_sync_sources(
     return await sync_source_svc.list_sources()
 
 
-@router.post("/sync/sources", response_model=SyncSourceRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/sync/sources",
+    response_model=SyncSourceRead,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_sync_source(
     data: SyncSourceCreate,
     sync_source_svc: SyncSourceSvc,
     _: CurrentAdmin,
 ) -> Any:
     """Create a new sync source configuration."""
-
-    try:
-        return await sync_source_svc.create_source(data)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    return await sync_source_svc.create_source(data)
 
 
 @router.patch("/sync/sources/{source_id}", response_model=SyncSourceRead)
@@ -388,15 +317,13 @@ async def update_sync_source(
     _: CurrentAdmin,
 ) -> Any:
     """Update an existing sync source configuration."""
-
-    try:
-        return await sync_source_svc.update_source(source_id, data)
-    except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=e.message) from e
+    return await sync_source_svc.update_source(source_id, data)
 
 
 @router.delete(
-    "/sync/sources/{source_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None
+    "/sync/sources/{source_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
 )
 async def delete_sync_source(
     source_id: str,
@@ -404,30 +331,17 @@ async def delete_sync_source(
     _: CurrentAdmin,
 ) -> None:
     """Delete a sync source configuration."""
-
-    try:
-        await sync_source_svc.delete_source(source_id)
-    except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=e.message) from e
+    await sync_source_svc.delete_source(source_id)
 
 
 @router.post("/sync/sources/{source_id}/trigger", response_model=RAGSyncResponse)
 async def trigger_sync_source(
     source_id: str,
-    background_tasks: BackgroundTasks,
     sync_source_svc: SyncSourceSvc,
     _: CurrentAdmin,
 ) -> Any:
     """Trigger a manual sync for a configured source."""
-
-    try:
-        sync_log = await sync_source_svc.trigger_sync(source_id)
-    except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=e.message) from e
-
-    # Dispatch background task to execute the sync
-    sync_single_source_task.delay(source_id, str(sync_log.id))
-
+    sync_log = await sync_source_svc.trigger_sync(source_id)
     return RAGSyncResponse(
         id=str(sync_log.id),
         status="running",
@@ -444,38 +358,13 @@ async def list_connectors(
     return sync_source_svc.list_connectors()
 
 
-# SSE for RAG status updates (auto-reconnect via EventSource API)
 @router.get("/status/stream", response_class=EventSourceResponse)
-async def rag_status_stream() -> AsyncIterable[ServerSentEvent]:
+async def rag_status_stream(
+    rag_status_svc: RAGStatusSvc,
+) -> AsyncIterable[ServerSentEvent]:
     """SSE endpoint for real-time RAG ingestion status updates.
 
-    Subscribes to Redis pub/sub channel 'rag_status' and streams events.
-    Browser auto-reconnects via EventSource API.
+    Subscribes to the ``rag_status`` Redis pub/sub channel; the browser auto-reconnects
+    via the EventSource API.
     """
-    r = aioredis.from_url(
-        f"redis://{app_settings.REDIS_HOST}:{app_settings.REDIS_PORT}/{app_settings.REDIS_DB}"
-    )  # type: ignore[no-untyped-call]
-    pubsub = r.pubsub()
-    await pubsub.subscribe("rag_status")
-    event_id = 0
-
-    try:
-        async for message in pubsub.listen():
-            if message["type"] == "message":
-                data = (
-                    message["data"].decode()
-                    if isinstance(message["data"], bytes)
-                    else message["data"]
-                )
-                event_id += 1
-                yield ServerSentEvent(raw_data=data, event="status", id=str(event_id))
-    except asyncio.CancelledError:
-        pass
-    except Exception as e:
-        logger.warning(f"RAG SSE error: {e}")
-    finally:
-        try:
-            await pubsub.unsubscribe("rag_status")
-            await r.aclose()
-        except Exception:
-            pass
+    return rag_status_svc.stream_events()

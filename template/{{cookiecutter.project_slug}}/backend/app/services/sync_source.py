@@ -128,20 +128,34 @@ class SyncSourceService:
         await sync_source_repo.delete(self.db, UUID(source_id))
 
     async def trigger_sync(self, source_id: str) -> SyncLog:
-        """Trigger a manual sync for a source. Returns the created SyncLog.
+        """Trigger a manual sync — persists a SyncLog and dispatches the task.
 
         Raises:
             NotFoundError: If sync source does not exist.
         """
         source = await self.get_source(source_id)
-
-        return await sync_log_repo.create(
+        sync_log = await sync_log_repo.create(
             self.db,
             source=source.connector_type,
             collection_name=source.collection_name,
             mode=source.sync_mode,
             sync_source_id=source.id,
         )
+{%- if cookiecutter.use_celery or cookiecutter.use_taskiq %}
+        from app.worker.tasks.rag_tasks import sync_single_source_task
+
+        sync_single_source_task.delay(source_id, str(sync_log.id))
+{%- elif cookiecutter.use_arq %}
+        from app.worker.arq_app import get_arq_pool
+
+        pool = await get_arq_pool()
+        await pool.enqueue_job("sync_single_source", source_id, str(sync_log.id))
+{%- else %}
+        from app.worker.background.rag import sync_source_in_background
+
+        await sync_source_in_background(source_id, str(sync_log.id))
+{%- endif %}
+        return sync_log
 
     async def update_after_sync(
         self,

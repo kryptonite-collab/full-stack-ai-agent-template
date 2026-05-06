@@ -126,20 +126,23 @@ class SyncSourceService:
         await sync_source_repo.delete(self.db, UUID(source_id))
 
     async def trigger_sync(self, source_id: str) -> SyncLog:
-        """Trigger a manual sync for a source. Returns the created SyncLog.
+        """Trigger a manual sync for a source — persists a SyncLog and dispatches the task.
 
         Raises:
             NotFoundError: If sync source does not exist.
         """
-        source = await self.get_source(source_id)
+        from app.worker.tasks.rag_tasks import sync_single_source_task
 
-        return await sync_log_repo.create(
+        source = await self.get_source(source_id)
+        sync_log = await sync_log_repo.create(
             self.db,
             source=source.connector_type,
             collection_name=source.collection_name,
             mode=source.sync_mode,
             sync_source_id=source.id,
         )
+        sync_single_source_task.delay(source_id, str(sync_log.id))
+        return sync_log
 
     async def update_after_sync(
         self,

@@ -226,7 +226,6 @@ if not use_telegram and not use_slack:
     remove_file(os.path.join(backend_app, "db", "models", "channel_bot.py"))
     remove_file(os.path.join(backend_app, "db", "models", "channel_identity.py"))
     remove_file(os.path.join(backend_app, "db", "models", "channel_session.py"))
-    remove_file(os.path.join(backend_app, "tasks", "channel.py"))
 
 # --- DeepAgents project files (only when use_pydantic_deep is enabled) ---
 if not use_pydantic_deep:
@@ -271,12 +270,17 @@ for root, _dirs, files in os.walk(backend_app):
             remove_file(filepath)
 
 # --- Worker/Background tasks ---
+# worker/background/ holds in-process handlers (FastAPI BackgroundTasks fallback)
+# and stays regardless of distributed queue selection. worker/tasks/ holds
+# distributed Celery/Taskiq/ARQ tasks and is only kept when one is selected.
 use_any_background_tasks = use_celery or use_taskiq or use_arq
+worker_dir = os.path.join(backend_app, "worker")
 if not use_any_background_tasks:
-    remove_dir(os.path.join(backend_app, "worker"))
+    remove_file(os.path.join(worker_dir, "celery_app.py"))
+    remove_file(os.path.join(worker_dir, "taskiq_app.py"))
+    remove_file(os.path.join(worker_dir, "arq_app.py"))
+    remove_dir(os.path.join(worker_dir, "tasks"))
 else:
-    # Remove specific worker files based on selection
-    worker_dir = os.path.join(backend_app, "worker")
     if not use_celery:
         remove_file(os.path.join(worker_dir, "celery_app.py"))
         remove_file(os.path.join(worker_dir, "tasks", "examples.py"))
@@ -310,7 +314,7 @@ def remove_empty_dirs(path: str) -> None:
 
 
 # Clean up empty directories in key locations
-for subdir in ["clients", "agents", "worker", "worker/tasks"]:
+for subdir in ["clients", "agents", "worker", "worker/tasks", "worker/background"]:
     dir_path = os.path.join(backend_app, subdir)
     if os.path.exists(dir_path):
         remove_empty_dirs(dir_path)

@@ -109,21 +109,8 @@ async def register_webhook(
     service: ChannelBotSvc,
     _: CurrentAdmin,
 ) -> Any:
-    """Register webhook URL with Telegram for this bot."""
-    from app.channels import get_adapter
-    from app.core.config import settings
-
-    bot = await service.get(bot_id)
-    adapter = get_adapter("telegram")
-    decrypted_token = service.get_decrypted_token(bot)
-
-    webhook_url = f"{settings.TELEGRAM_WEBHOOK_BASE_URL}/api/v1/channels/telegram/{bot_id}/webhook"
-    success = await adapter.register_webhook(
-        decrypted_token,
-        url=webhook_url,
-        secret=bot.webhook_secret,
-    )
-    return {"success": success, "webhook_url": webhook_url}
+    """Register a webhook URL with the bot's platform."""
+    return await service.register_webhook(bot_id)
 
 
 @router.post("/bots/{bot_id}/webhook/delete")
@@ -132,15 +119,8 @@ async def delete_webhook(
     service: ChannelBotSvc,
     _: CurrentAdmin,
 ) -> Any:
-    """Remove the webhook from Telegram (switches bot to polling mode)."""
-    from app.channels import get_adapter
-
-    bot = await service.get(bot_id)
-    adapter = get_adapter("telegram")
-    decrypted_token = service.get_decrypted_token(bot)
-
-    success = await adapter.delete_webhook(decrypted_token)
-    return {"success": success}
+    """Remove the webhook from the bot's platform (switches to polling mode)."""
+    return await service.delete_webhook(bot_id)
 
 
 @router.get("/bots/{bot_id}/sessions", response_model=ChannelSessionList)

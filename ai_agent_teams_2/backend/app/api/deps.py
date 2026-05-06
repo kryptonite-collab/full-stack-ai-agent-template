@@ -108,6 +108,17 @@ def get_sync_source_service(db: DBSession) -> SyncSourceService:
 RAGDocumentSvc = Annotated[RAGDocumentService, Depends(get_rag_document_service)]
 RAGSyncSvc = Annotated[RAGSyncService, Depends(get_rag_sync_service)]
 SyncSourceSvc = Annotated[SyncSourceService, Depends(get_sync_source_service)]
+
+
+from app.services.rag_status import RAGStatusService
+
+
+def get_rag_status_service() -> RAGStatusService:
+    """Create RAGStatusService instance (no DB)."""
+    return RAGStatusService()
+
+
+RAGStatusSvc = Annotated[RAGStatusService, Depends(get_rag_status_service)]
 from app.services.knowledge_base import KnowledgeBaseService
 
 
@@ -517,3 +528,13 @@ def get_ingestion_service(
 
 
 IngestionSvc = Annotated[IngestionService, Depends(get_ingestion_service)]
+
+from app.services.newsletter import NewsletterService
+
+
+def get_newsletter_service() -> NewsletterService:
+    """Create NewsletterService instance."""
+    return NewsletterService()
+
+
+NewsletterSvc = Annotated[NewsletterService, Depends(get_newsletter_service)]

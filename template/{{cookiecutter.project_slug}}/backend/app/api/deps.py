@@ -249,6 +249,18 @@ RAGSyncSvc = Annotated[RAGSyncService, Depends(get_rag_sync_service)]
 SyncSourceSvc = Annotated[SyncSourceService, Depends(get_sync_source_service)]
 {%- endif %}
 
+{%- if cookiecutter.enable_rag and cookiecutter.enable_redis %}
+from app.services.rag_status import RAGStatusService
+
+
+def get_rag_status_service() -> RAGStatusService:
+    """Create RAGStatusService instance (no DB)."""
+    return RAGStatusService()
+
+
+RAGStatusSvc = Annotated[RAGStatusService, Depends(get_rag_status_service)]
+{%- endif %}
+
 {%- if cookiecutter.enable_teams and cookiecutter.enable_rag and cookiecutter.use_jwt and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
 from app.services.knowledge_base import KnowledgeBaseService
 
@@ -1031,4 +1043,15 @@ def get_ingestion_service(
 {%- endif %}
 
 IngestionSvc = Annotated[IngestionService, Depends(get_ingestion_service)]
+{%- endif %}
+{%- if cookiecutter.enable_newsletter_signup %}
+from app.services.newsletter import NewsletterService
+
+
+def get_newsletter_service() -> NewsletterService:
+    """Create NewsletterService instance."""
+    return NewsletterService()
+
+
+NewsletterSvc = Annotated[NewsletterService, Depends(get_newsletter_service)]
 {%- endif %}

@@ -79,6 +79,30 @@ class RAGSyncService:
             mode=mode,
         )
 
+    async def start_local_sync(
+        self,
+        *,
+        collection_name: str,
+        mode: str,
+        path: str | None,
+    ) -> SyncLog:
+        """Persist a sync log and dispatch the local-sync Celery task."""
+        from app.worker.tasks.rag_tasks import sync_collection_task
+
+        sync_log = await self.create_sync_log(
+            source="local",
+            collection_name=collection_name,
+            mode=mode,
+        )
+        sync_collection_task.delay(
+            sync_log_id=str(sync_log.id),
+            source="local",
+            collection_name=collection_name,
+            mode=mode,
+            path=path,
+        )
+        return sync_log
+
     async def complete_sync(
         self,
         sync_id: str,

@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import logging
 import secrets
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.channels import get_adapter
 from app.core.channel_crypto import decrypt_token, encrypt_token
+from app.core.config import settings
 from app.core.exceptions import NotFoundError
 from app.db.models.channel_bot import ChannelBot
-from app.repositories import channel_bot_repo
+from app.repositories import channel_bot_repo, channel_session_repo
 from app.schemas.channel_bot import ChannelBotCreate, ChannelBotUpdate
 
 logger = logging.getLogger(__name__)
@@ -112,8 +115,29 @@ class ChannelBotService:
         self, bot_id: UUID, *, skip: int = 0, limit: int = 50
     ) -> tuple[list, int]:
         """List channel sessions for this bot."""
-        from app.repositories import channel_session_repo
-
         items = await channel_session_repo.list_by_bot(self.db, bot_id, skip=skip, limit=limit)
         total = await channel_session_repo.count_by_bot(self.db, bot_id)
         return items, total
+
+    async def register_webhook(self, bot_id: UUID) -> dict[str, Any]:
+        """Register a webhook URL with the bot's platform.
+
+        Looks up the bot, picks the adapter for its platform, builds the platform-specific
+        webhook URL from settings, and asks the adapter to register it.
+        """
+        bot = await self.get(bot_id)
+        adapter = get_adapter(bot.platform)
+        token = self.get_decrypted_token(bot)
+        webhook_url = (
+            f"{settings.TELEGRAM_WEBHOOK_BASE_URL}/api/v1/channels/{bot.platform}/{bot_id}/webhook"
+        )
+        success = await adapter.register_webhook(token, url=webhook_url, secret=bot.webhook_secret)
+        return {"success": success, "webhook_url": webhook_url}
+
+    async def delete_webhook(self, bot_id: UUID) -> dict[str, Any]:
+        """Remove the webhook from the bot's platform (switches to polling mode)."""
+        bot = await self.get(bot_id)
+        adapter = get_adapter(bot.platform)
+        token = self.get_decrypted_token(bot)
+        success = await adapter.delete_webhook(token)
+        return {"success": success}

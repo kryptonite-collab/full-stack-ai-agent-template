@@ -73,6 +73,53 @@ class RAGSyncService:
             mode=mode,
         )
 
+    async def start_local_sync(
+        self,
+        *,
+        collection_name: str,
+        mode: str,
+        path: str | None,
+    ) -> SyncLog:
+        """Persist a sync log and dispatch the local-sync task on the configured backend."""
+        sync_log = await self.create_sync_log(
+            source="local",
+            collection_name=collection_name,
+            mode=mode,
+        )
+{%- if cookiecutter.use_celery or cookiecutter.use_taskiq %}
+        from app.worker.tasks.rag_tasks import sync_collection_task
+
+        sync_collection_task.delay(
+            sync_log_id=str(sync_log.id),
+            source="local",
+            collection_name=collection_name,
+            mode=mode,
+            path=path,
+        )
+{%- elif cookiecutter.use_arq %}
+        from app.worker.arq_app import get_arq_pool
+
+        pool = await get_arq_pool()
+        await pool.enqueue_job(
+            "sync_collection",
+            str(sync_log.id),
+            "local",
+            collection_name,
+            mode,
+            path,
+        )
+{%- else %}
+        from app.worker.background.rag import sync_local_in_background
+
+        await sync_local_in_background(
+            sync_log_id=str(sync_log.id),
+            collection_name=collection_name,
+            mode=mode,
+            path=path,
+        )
+{%- endif %}
+        return sync_log
+
     async def complete_sync(
         self,
         sync_id: str,
