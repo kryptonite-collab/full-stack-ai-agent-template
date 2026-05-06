@@ -4,8 +4,30 @@ import logging
 from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
+from pydantic_ai.messages import (
+    ModelRequest,
+    ModelResponse,
+    SystemPromptPart,
+    TextPart,
+    UserPromptPart,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def build_message_history(history: list[dict[str, str]]) -> list[ModelRequest | ModelResponse]:
+    """Convert conversation history to PydanticAI message format."""
+    model_history: list[ModelRequest | ModelResponse] = []
+
+    for msg in history:
+        if msg["role"] == "user":
+            model_history.append(ModelRequest(parts=[UserPromptPart(content=msg["content"])]))
+        elif msg["role"] == "assistant":
+            model_history.append(ModelResponse(parts=[TextPart(content=msg["content"])]))
+        elif msg["role"] == "system":
+            model_history.append(ModelRequest(parts=[SystemPromptPart(content=msg["content"])]))
+
+    return model_history
 
 
 class AgentConnectionManager:

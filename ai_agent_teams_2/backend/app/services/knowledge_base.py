@@ -1,13 +1,16 @@
 """Knowledge Base service (PostgreSQL async)."""
 
+import logging
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AuthorizationError, NotFoundError
 from app.db.models.knowledge_base import KBScope, KnowledgeBase
-from app.repositories import knowledge_base_repo
+from app.repositories import conversation_repo, knowledge_base_repo
 from app.schemas.knowledge_base import KnowledgeBaseCreate, KnowledgeBaseUpdate
+
+logger = logging.getLogger(__name__)
 
 
 class KnowledgeBaseService:
@@ -22,6 +25,41 @@ class KnowledgeBaseService:
         return await knowledge_base_repo.get_accessible(
             self.db, user_id=user_id, organization_id=organization_id
         )
+
+    async def resolve_active_collection_names(
+        self,
+        conversation_id: UUID,
+        user_id: UUID | None,
+    ) -> list[str]:
+        """Return active KB collection names for a conversation.
+
+        Always resolved server-side from `Conversation.active_knowledge_base_ids`,
+        intersected with KBs the user can access. Falls back to the org default
+        KB when no KBs are explicitly active. Never trust collection names from
+        the LLM or client.
+        """
+        try:
+            conv = await conversation_repo.get_conversation_by_id(self.db, conversation_id)
+            if not conv:
+                return []
+            org_id = getattr(conv, "organization_id", None)
+            active: list[UUID] = conv.active_knowledge_base_ids or []
+            if not active:
+                if org_id:
+                    default_kb = await knowledge_base_repo.get_default_for_org(self.db, org_id)
+                    if default_kb:
+                        return [default_kb.collection_name]
+                return []
+            accessible = await knowledge_base_repo.get_accessible(
+                self.db,
+                user_id=user_id,
+                organization_id=org_id,
+            )
+            active_set = {str(i) for i in active}
+            return [kb.collection_name for kb in accessible if str(kb.id) in active_set]
+        except Exception as exc:
+            logger.warning("KB collection resolution failed: %s", exc)
+            return []
 
     async def get(
         self,

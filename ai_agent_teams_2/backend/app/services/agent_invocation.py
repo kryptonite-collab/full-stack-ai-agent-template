@@ -104,7 +104,7 @@ class AgentInvocationService:
     ) -> tuple[str, list[ToolEvent]]:
         """Invoke PydanticAI agent and extract tool events from result messages."""
         from app.agents.assistant import Deps, get_agent
-        from app.api.routes.v1.agent import build_message_history
+        from app.services.agent import build_message_history
 
         model_name: str | None = kwargs.get("model_override")
         assistant = get_agent(model_name=model_name)

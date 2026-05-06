@@ -17,14 +17,7 @@ from pydantic_ai import (
     TextPartDelta,
     ToolCallPartDelta,
 )
-from pydantic_ai.messages import (
-    BinaryContent,
-    ModelRequest,
-    ModelResponse,
-    SystemPromptPart,
-    TextPart,
-    UserPromptPart,
-)
+from pydantic_ai.messages import BinaryContent, TextPart
 
 from app.agents.assistant import Deps, get_agent
 from app.api.deps import get_conversation_service, get_current_user_ws
@@ -38,8 +31,9 @@ from app.schemas.conversation import (
     ToolCallComplete,
     ToolCallCreate,
 )
-from app.services.agent import AgentConnectionManager
+from app.services.agent import AgentConnectionManager, build_message_history
 from app.services.file_storage import get_file_storage
+from app.services.knowledge_base import KnowledgeBaseService
 
 logger = logging.getLogger(__name__)
 
@@ -56,54 +50,6 @@ async def list_models() -> dict[str, Any]:
 
 
 manager = AgentConnectionManager()
-
-
-async def _resolve_kb_collections(conversation_id: str, user_id: str | None) -> list[str]:
-    """Return active KB collection names for a conversation — always resolved server-side."""
-    try:
-        from uuid import UUID as _UUID
-
-        from app.db.session import get_db_context as _db_ctx
-        from app.repositories import conversation_repo as _c_repo
-        from app.repositories import knowledge_base_repo as _kb_repo
-
-        async with _db_ctx() as _db:
-            _conv = await _c_repo.get_conversation_by_id(_db, _UUID(conversation_id))
-            if not _conv:
-                return []
-            _org_id = getattr(_conv, "organization_id", None)
-            _active: list[str] = _conv.active_knowledge_base_ids or []
-            if not _active:
-                if _org_id:
-                    _dflt = await _kb_repo.get_default_for_org(_db, _org_id)
-                    if _dflt:
-                        return [_dflt.collection_name]
-                return []
-            _accessible = await _kb_repo.get_accessible(
-                _db,
-                user_id=_UUID(user_id) if user_id else None,
-                organization_id=_org_id,
-            )
-            _active_set = {str(i) for i in _active}
-            return [_kb.collection_name for _kb in _accessible if str(_kb.id) in _active_set]
-    except Exception as _e:
-        logger.warning("KB collection resolution failed: %s", _e)
-        return []
-
-
-def build_message_history(history: list[dict[str, str]]) -> list[ModelRequest | ModelResponse]:
-    """Convert conversation history to PydanticAI message format."""
-    model_history: list[ModelRequest | ModelResponse] = []
-
-    for msg in history:
-        if msg["role"] == "user":
-            model_history.append(ModelRequest(parts=[UserPromptPart(content=msg["content"])]))
-        elif msg["role"] == "assistant":
-            model_history.append(ModelResponse(parts=[TextPart(content=msg["content"])]))
-        elif msg["role"] == "system":
-            model_history.append(ModelRequest(parts=[SystemPromptPart(content=msg["content"])]))
-
-    return model_history
 
 
 @router.websocket("/ws/agent")
@@ -252,14 +198,15 @@ async def agent_websocket(
                         user_input = [full_text, *image_parts]
                     elif file_context_parts:
                         user_input = user_message + "".join(file_context_parts)
-                deps.kb_collection_names = (
-                    await _resolve_kb_collections(
-                        current_conversation_id or "",
-                        str(user.id) if user else None,
-                    )
-                    if current_conversation_id
-                    else []
-                )
+                if current_conversation_id:
+                    async with get_db_context() as kb_db:
+                        kb_service = KnowledgeBaseService(kb_db)
+                        deps.kb_collection_names = await kb_service.resolve_active_collection_names(
+                            UUID(current_conversation_id),
+                            user.id if user else None,
+                        )
+                else:
+                    deps.kb_collection_names = []
 
                 # Use iter() on the underlying PydanticAI agent to stream all events
                 async with assistant.agent.iter(
