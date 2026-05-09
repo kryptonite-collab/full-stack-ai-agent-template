@@ -261,7 +261,7 @@ class ProjectConfig(BaseModel):
     enable_precommit: bool = True
     enable_makefile: bool = True
     enable_docker: bool = True
-    reverse_proxy: ReverseProxyType = ReverseProxyType.TRAEFIK_INCLUDED
+    reverse_proxy: ReverseProxyType = ReverseProxyType.NGINX_EXTERNAL
     ci_type: CIType = CIType.GITHUB
     enable_kubernetes: bool = False
     generate_env: bool = True
@@ -286,7 +286,7 @@ class ProjectConfig(BaseModel):
     enable_slack_alerts: bool = False
     billing_default_currency: str = "usd"
     billing_trial_days_default: int = 14
-    billing_trial_requires_card: bool = False
+    billing_trial_requires_card: bool = True
     billing_credits_per_usd: int = 1000
     billing_credits_low_threshold: int = 100
     billing_credits_free_tier_grant: int = 500

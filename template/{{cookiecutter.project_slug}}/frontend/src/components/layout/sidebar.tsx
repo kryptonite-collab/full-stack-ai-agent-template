@@ -3,36 +3,37 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { ROUTES } from "@/lib/constants";
-import { LayoutDashboard, MessageSquare{%- if cookiecutter.enable_rag %}, Database{%- endif %}{%- if cookiecutter.use_jwt %}, UserCircle, ShieldAlert{%- endif %}{%- if cookiecutter.enable_teams and cookiecutter.use_jwt %}, Building2{%- endif %}{%- if cookiecutter.enable_billing and cookiecutter.enable_teams %}, CreditCard{%- endif %} } from "lucide-react";
-import { useSidebarStore{%- if cookiecutter.use_jwt %}, useAuthStore{%- endif %} } from "@/stores";
+import { APP_NAME, ROUTES } from "@/lib/constants";
+import {
+  LayoutDashboard,
+  MessageSquare,
+  Database,
+  UserCircle,
+  ShieldAlert,
+  Building2,
+  CreditCard,
+} from "lucide-react";
+import { useSidebarStore, useAuthStore } from "@/stores";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from "@/components/ui";
 
 const navigation = [
   { name: "Dashboard", href: ROUTES.DASHBOARD, icon: LayoutDashboard },
   { name: "Chat", href: ROUTES.CHAT, icon: MessageSquare },
-{%- if cookiecutter.enable_rag and not (cookiecutter.enable_teams and cookiecutter.use_jwt) %}
-  { name: "Knowledge Base", href: ROUTES.RAG, icon: Database },
-{%- endif %}
-{%- if cookiecutter.enable_teams and cookiecutter.enable_rag and cookiecutter.use_jwt %}
+{%- if cookiecutter.enable_teams and cookiecutter.enable_rag %}
   { name: "Knowledge Bases", href: ROUTES.KB, icon: Database },
 {%- endif %}
-{%- if cookiecutter.enable_teams and cookiecutter.use_jwt %}
+{%- if cookiecutter.enable_teams %}
   { name: "Organizations", href: ROUTES.ORGS, icon: Building2 },
 {%- endif %}
-{%- if cookiecutter.enable_billing and cookiecutter.enable_teams %}
+{%- if cookiecutter.enable_billing %}
   { name: "Billing", href: ROUTES.BILLING, icon: CreditCard },
 {%- endif %}
-{%- if cookiecutter.use_jwt %}
   { name: "Profile", href: ROUTES.PROFILE, icon: UserCircle },
-{%- endif %}
 ];
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-{%- if cookiecutter.use_jwt %}
   const { user } = useAuthStore();
-{%- endif %}
 
   return (
     <nav className="flex-1 space-y-1 p-4">
@@ -48,7 +49,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
               "min-h-[44px]",
               isActive
                 ? "bg-secondary text-secondary-foreground"
-                : "text-muted-foreground hover:bg-secondary/50 hover:text-secondary-foreground"
+                : "text-muted-foreground hover:bg-secondary/50 hover:text-secondary-foreground",
             )}
           >
             <item.icon className="h-5 w-5" />
@@ -56,7 +57,6 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
           </Link>
         );
       })}
-{%- if cookiecutter.use_jwt %}
       {user?.role === "admin" && (
         <Link
           href={ROUTES.ADMIN}
@@ -66,14 +66,13 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             "min-h-[44px]",
             pathname.startsWith("/admin")
               ? "bg-secondary text-secondary-foreground"
-              : "text-muted-foreground hover:bg-secondary/50 hover:text-secondary-foreground"
+              : "text-muted-foreground hover:bg-secondary/50 hover:text-secondary-foreground",
           )}
         >
           <ShieldAlert className="h-5 w-5" />
           Admin
         </Link>
       )}
-{%- endif %}
     </nav>
   );
 }
@@ -87,7 +86,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           className="flex items-center gap-2 font-semibold"
           onClick={onNavigate}
         >
-          <span>{"{{ cookiecutter.project_name }}"}</span>
+          <span>{APP_NAME}</span>
         </Link>
       </div>
       <NavLinks onNavigate={onNavigate} />
@@ -102,7 +101,7 @@ export function Sidebar() {
     <Sheet open={isOpen} onOpenChange={close}>
       <SheetContent side="left" className="w-72 p-0">
         <SheetHeader className="h-14 px-4">
-          <SheetTitle>{"{{ cookiecutter.project_name }}"}</SheetTitle>
+          <SheetTitle>{APP_NAME}</SheetTitle>
           <SheetClose onClick={close} />
         </SheetHeader>
         <NavLinks onNavigate={close} />

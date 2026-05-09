@@ -131,7 +131,10 @@ class FileUploadService:
             return self._parse_pdf_pymupdf(data)
 
     async def _parse_pdf_liteparse(self, data: bytes) -> str | None:
-        """Extract text from PDF using LiteParse."""
+        """Extract text from PDF using LiteParse.
+
+        Falls back to PyMuPDF on any failure so chat uploads stay best-effort.
+        """
         try:
             from liteparse import LiteParse
 
@@ -140,11 +143,17 @@ class FileUploadService:
                 temp_path = f.name
             try:
                 parser = LiteParse()
-                result = await parser.aparse(temp_path)
-                pages = result.pages if hasattr(result, "pages") else [result]
-                text = "\n\n".join(
-                    p.content if hasattr(p, "content") else str(p) for p in pages
+                ocr_url = getattr(settings, "LITEPARSE_OCR_SERVER_URL", "") or None
+                ocr_lang = getattr(settings, "LITEPARSE_OCR_LANGUAGE", "en")
+                timeout_s = float(getattr(settings, "LITEPARSE_TIMEOUT_SECONDS", 600.0))
+                result = await parser.parse_async(
+                    temp_path,
+                    ocr_enabled=getattr(settings, "RAG_ENABLE_OCR", False),
+                    ocr_server_url=ocr_url,
+                    ocr_language=ocr_lang,
+                    timeout=timeout_s,
                 )
+                text = "\n\n".join(p.text for p in result.pages if p.text.strip())
                 return text if text.strip() else None
             finally:
                 os.unlink(temp_path)
@@ -400,7 +409,10 @@ class FileUploadService:
             return self._parse_pdf_pymupdf(data) if hasattr(self, '_parse_pdf_pymupdf') else None
 
     def _parse_pdf_liteparse(self, data: bytes) -> str | None:
-        """Extract text from PDF using LiteParse (sync)."""
+        """Extract text from PDF using LiteParse (sync).
+
+        Falls back to PyMuPDF on any failure so chat uploads stay best-effort.
+        """
         try:
             from liteparse import LiteParse
 
@@ -409,11 +421,17 @@ class FileUploadService:
                 temp_path = f.name
             try:
                 parser = LiteParse()
-                result = parser.parse(temp_path)
-                pages = result.pages if hasattr(result, "pages") else [result]
-                text = "\n\n".join(
-                    p.content if hasattr(p, "content") else str(p) for p in pages
+                ocr_url = getattr(settings, "LITEPARSE_OCR_SERVER_URL", "") or None
+                ocr_lang = getattr(settings, "LITEPARSE_OCR_LANGUAGE", "en")
+                timeout_s = float(getattr(settings, "LITEPARSE_TIMEOUT_SECONDS", 600.0))
+                result = parser.parse(
+                    temp_path,
+                    ocr_enabled=getattr(settings, "RAG_ENABLE_OCR", False),
+                    ocr_server_url=ocr_url,
+                    ocr_language=ocr_lang,
+                    timeout=timeout_s,
                 )
+                text = "\n\n".join(p.text for p in result.pages if p.text.strip())
                 return text if text.strip() else None
             finally:
                 os.unlink(temp_path)

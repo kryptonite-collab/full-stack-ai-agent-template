@@ -1,36 +1,11 @@
-"""Services layer - business logic.
+"""Services layer — business logic.
 
 Services orchestrate business operations, using repositories for data access
 and raising domain exceptions for error handling.
+
+NOTE: this package intentionally does NOT eagerly import service classes.
+Doing so caused a circular import via `app.core.config` (which imports
+`app.services.rag.config` for forward-reference rebuild) ↔ services that
+import `settings` at module level. Import service classes from their
+modules directly: `from app.services.user import UserService`.
 """
-# ruff: noqa: I001, RUF022 - Imports structured for Jinja2 template conditionals
-
-from app.services.user import UserService
-
-from app.services.session import SessionService
-
-from app.services.conversation import ConversationService
-
-from app.services.rag_document import RAGDocumentService
-
-from app.services.rag_sync import RAGSyncService
-
-from app.services.sync_source import SyncSourceService
-
-from app.services.conversation_share import ConversationShareService
-
-from app.services.file_upload import FileUploadService
-
-from app.services.channel_bot import ChannelBotService
-
-__all__ = [
-    "UserService",
-    "SessionService",
-    "ConversationService",
-    "RAGDocumentService",
-    "RAGSyncService",
-    "SyncSourceService",
-    "ConversationShareService",
-    "FileUploadService",
-    "ChannelBotService",
-]

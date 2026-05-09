@@ -214,12 +214,15 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str = ""
     STRIPE_API_VERSION: str = "2025-04-30.acacia"
     STRIPE_TRIAL_DAYS_DEFAULT: int = 14
-    STRIPE_TRIAL_REQUIRES_PAYMENT_METHOD: bool = true
+    STRIPE_TRIAL_REQUIRES_PAYMENT_METHOD: bool = True
 
     BILLING_DEFAULT_CURRENCY: str = "usd"
     BILLING_SUCCESS_URL: str = ""
     BILLING_CANCEL_URL: str = ""
     BILLING_PORTAL_RETURN_URL: str = ""
+
+    # Public URL of the frontend; used to build Stripe redirect URLs.
+    FRONTEND_URL: str = "http://localhost:3000"
 
     @model_validator(mode="after")
     def _set_billing_urls(self) -> "Settings":

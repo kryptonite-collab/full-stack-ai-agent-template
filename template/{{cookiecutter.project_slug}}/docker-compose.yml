@@ -214,6 +214,7 @@ services:
 
   celery_worker:
     image: {{ cookiecutter.project_slug }}_backend:dev
+    pull_policy: never
     container_name: {{ cookiecutter.project_slug }}_celery_worker
     volumes:
       - ./backend/app:/app/app:ro
@@ -260,6 +261,7 @@ services:
 
   celery_beat:
     image: {{ cookiecutter.project_slug }}_backend:dev
+    pull_policy: never
     container_name: {{ cookiecutter.project_slug }}_celery_beat
     volumes:
       - ./backend/app:/app/app:ro
@@ -282,6 +284,7 @@ services:
 
   flower:
     image: {{ cookiecutter.project_slug }}_backend:dev
+    pull_policy: never
     container_name: {{ cookiecutter.project_slug }}_flower
     command: celery -A app.worker.celery_app flower --port=5555
     ports:
@@ -307,6 +310,7 @@ services:
 
   taskiq_worker:
     image: {{ cookiecutter.project_slug }}_backend:dev
+    pull_policy: never
     container_name: {{ cookiecutter.project_slug }}_taskiq_worker
     volumes:
       - ./backend/app:/app/app:ro
@@ -353,6 +357,7 @@ services:
 
   taskiq_scheduler:
     image: {{ cookiecutter.project_slug }}_backend:dev
+    pull_policy: never
     container_name: {{ cookiecutter.project_slug }}_taskiq_scheduler
     volumes:
       - ./backend/app:/app/app:ro
@@ -384,6 +389,7 @@ services:
 
   arq_worker:
     image: {{ cookiecutter.project_slug }}_backend:dev
+    pull_policy: never
     container_name: {{ cookiecutter.project_slug }}_arq_worker
     volumes:
       - ./backend/app:/app/app:ro

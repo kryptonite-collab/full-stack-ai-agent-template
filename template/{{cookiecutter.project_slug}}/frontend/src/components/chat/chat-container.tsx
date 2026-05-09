@@ -4,16 +4,19 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { useChat } from "@/hooks";
 import { MessageList } from "./message-list";
 import { ChatInput } from "./chat-input";
+import { ChatEmptyState } from "./chat-empty-state";
 import { ToolApprovalDialog } from "./tool-approval-dialog";
-import { Bot, ChevronDown, Check } from "lucide-react";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui";
+import { ChevronDown, Check, Database } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui";
 import type { PendingApproval, Decision } from "@/types";
 import { useConversationStore, useChatStore } from "@/stores";
 import { useConversations } from "@/hooks";
-{%- if cookiecutter.enable_teams and cookiecutter.enable_rag and cookiecutter.use_jwt %}
-import { Database } from "lucide-react";
 import { useKBPanelStore } from "@/stores";
-{%- endif %}
 
 export function ChatContainer() {
   return <AuthenticatedChatContainer />;
@@ -25,9 +28,12 @@ function AuthenticatedChatContainer() {
   const { fetchConversations } = useConversations();
   const prevConversationIdRef = useRef<string | null | undefined>(undefined);
 
-  const handleConversationCreated = useCallback((conversationId: string) => {
-    fetchConversations();
-  }, [fetchConversations]);
+  const handleConversationCreated = useCallback(
+    (conversationId: string) => {
+      fetchConversations();
+    },
+    [fetchConversations],
+  );
 
   const {
     messages,
@@ -85,9 +91,7 @@ function AuthenticatedChatContainer() {
           role: msg.role,
           content: msg.content,
           timestamp: new Date(msg.created_at),
-{%- if cookiecutter.use_jwt %}
           conversationId: msg.conversation_id,
-{%- endif %}
           toolCalls: msg.tool_calls?.map((tc) => ({
             id: tc.tool_call_id,
             name: tc.tool_name,
@@ -95,13 +99,12 @@ function AuthenticatedChatContainer() {
             result: tc.result,
             status: tc.status === "failed" ? "error" : tc.status,
           })),
-{%- if cookiecutter.use_jwt %}
           user_rating: msg.user_rating ?? undefined,
           rating_count: msg.rating_count ?? undefined,
-{%- endif %}
-          fileIds: "files" in msg && Array.isArray((msg as unknown as { files?: unknown[] }).files)
-            ? ((msg as unknown as { files: { id: string }[] }).files).map((f) => f.id)
-            : undefined,
+          fileIds:
+            "files" in msg && Array.isArray((msg as unknown as { files?: unknown[] }).files)
+              ? (msg as unknown as { files: { id: string }[] }).files.map((f) => f.id)
+              : undefined,
         });
       });
     }
@@ -116,15 +119,29 @@ function AuthenticatedChatContainer() {
     const container = scrollContainerRef.current;
     if (!container) return;
     // Only auto-scroll if user is already near the bottom
-    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+    const isNearBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight < 150;
     if (isNearBottom) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
-
-{%- if cookiecutter.enable_teams and cookiecutter.enable_rag and cookiecutter.use_jwt %}
   const { toggle: toggleKBPanel } = useKBPanelStore();
-{%- endif %}
+
+  const handleRegenerate = useCallback(
+    (assistantMessageId: string) => {
+      const idx = messages.findIndex((m) => m.id === assistantMessageId);
+      if (idx < 0) return;
+      // Walk backwards to find the user message that prompted this turn.
+      for (let i = idx - 1; i >= 0; i--) {
+        const m = messages[i];
+        if (m?.role === "user") {
+          sendMessage(m.content, m.fileIds);
+          return;
+        }
+      }
+    },
+    [messages, sendMessage],
+  );
 
   return (
     <ChatUI
@@ -133,27 +150,28 @@ function AuthenticatedChatContainer() {
       isProcessing={isProcessing}
       sendMessage={sendMessage}
       onModelChange={setModel}
+      onRegenerate={handleRegenerate}
       messagesEndRef={messagesEndRef}
       scrollContainerRef={scrollContainerRef}
       pendingApproval={pendingApproval}
       onResumeDecisions={sendResumeDecisions}
-{%- if cookiecutter.enable_teams and cookiecutter.enable_rag and cookiecutter.use_jwt %}
       onToggleKBPanel={toggleKBPanel}
-{%- endif %}
     />
   );
 }
 
 function ModelSelector({ onChange }: { onChange: (model: string | null) => void }) {
-  const [availableModels, setAvailableModels] = useState<{value: string; label: string}[]>([
+  const [availableModels, setAvailableModels] = useState<{ value: string; label: string }[]>([
     { value: "", label: "Default" },
   ]);
-  const [selected, setSelected] = useState<{value: string; label: string}>(availableModels[0] ?? { value: "", label: "Default" });
+  const [selected, setSelected] = useState<{ value: string; label: string }>(
+    availableModels[0] ?? { value: "", label: "Default" },
+  );
 
   useEffect(() => {
     fetch("/api/v1/agent/models", { credentials: "include" })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
         if (data?.models) {
           const models = [
             { value: "", label: `Default (${data.default})` },
@@ -169,14 +187,21 @@ function ModelSelector({ onChange }: { onChange: (model: string | null) => void 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors">
+        <button className="text-foreground/55 hover:bg-foreground/5 hover:text-foreground inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-mono text-[11px] uppercase tracking-wider transition-colors">
           {selected.label}
           <ChevronDown className="h-3 w-3" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
         {availableModels.map((m) => (
-          <DropdownMenuItem key={m.value} onClick={() => { setSelected(m); onChange(m.value || null); }} className="flex items-center justify-between text-xs">
+          <DropdownMenuItem
+            key={m.value}
+            onClick={() => {
+              setSelected(m);
+              onChange(m.value || null);
+            }}
+            className="flex items-center justify-between text-xs"
+          >
             {m.label}
             {selected.value === m.value && <Check className="h-3.5 w-3.5" />}
           </DropdownMenuItem>
@@ -192,13 +217,12 @@ interface ChatUIProps {
   isProcessing: boolean;
   sendMessage: (content: string, fileIds?: string[]) => void;
   onModelChange?: (model: string | null) => void;
+  onRegenerate?: (messageId: string) => void;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   pendingApproval?: PendingApproval | null;
   onResumeDecisions?: (decisions: Decision[]) => void;
-{%- if cookiecutter.enable_teams and cookiecutter.enable_rag and cookiecutter.use_jwt %}
   onToggleKBPanel?: () => void;
-{%- endif %}
 }
 
 function ChatUI({
@@ -207,29 +231,25 @@ function ChatUI({
   isProcessing,
   sendMessage,
   onModelChange,
+  onRegenerate,
   messagesEndRef,
   scrollContainerRef,
   pendingApproval,
   onResumeDecisions,
-{%- if cookiecutter.enable_teams and cookiecutter.enable_rag and cookiecutter.use_jwt %}
   onToggleKBPanel,
-{%- endif %}
 }: ChatUIProps) {
   return (
-    <div className="flex flex-col h-full max-w-4xl mx-auto w-full">
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-2 py-4 sm:px-4 sm:py-6 scrollbar-thin">
+    <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
+      <div
+        ref={scrollContainerRef}
+        className="scrollbar-thin flex-1 overflow-y-auto px-2 py-4 sm:px-4 sm:py-6"
+      >
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-4">
-            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-secondary flex items-center justify-center">
-              <Bot className="h-7 w-7 sm:h-8 sm:w-8" />
-            </div>
-            <div className="text-center px-4">
-              <p className="text-base sm:text-lg font-medium text-foreground">AI Assistant</p>
-              <p className="text-sm">Start a conversation to get help</p>
-            </div>
+          <div className="flex h-full items-center">
+            <ChatEmptyState onPick={(prompt) => sendMessage(prompt)} />
           </div>
         ) : (
-          <MessageList messages={messages} />
+          <MessageList messages={messages} onRegenerate={onRegenerate} />
         )}
         <div ref={messagesEndRef} />
       </div>
@@ -247,7 +267,7 @@ function ChatUI({
       )}
 
       <div className="px-2 pb-2 sm:px-4 sm:pb-4">
-        <div className="rounded-xl border bg-card shadow-sm">
+        <div className="bg-card border-foreground/10 rounded-2xl border shadow-sm transition-colors focus-within:border-foreground/30">
           <div className="px-3 pt-3 sm:px-4 sm:pt-4">
             <ChatInput
               onSend={sendMessage}
@@ -255,29 +275,35 @@ function ChatUI({
               isProcessing={isProcessing}
             />
           </div>
-          <div className="flex items-center justify-between px-3 pb-2 sm:px-4 sm:pb-3">
+          <div className="border-foreground/8 flex items-center justify-between border-t px-3 py-2 sm:px-4">
             <div className="flex items-center gap-2">
               <span
-                className={`inline-block h-1.5 w-1.5 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`}
-              />
-{%- if cookiecutter.enable_teams and cookiecutter.enable_rag and cookiecutter.use_jwt %}
+                className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider ${isConnected ? "text-foreground/55" : "text-destructive"}`}
+              >
+                <span
+                  className={`inline-block h-1.5 w-1.5 rounded-full ${
+                    isConnected ? "bg-brand" : "bg-destructive"
+                  } ${isConnected ? "animate-pulse" : ""}`}
+                />
+                {isConnected ? "Live" : "Offline"}
+              </span>
               {onToggleKBPanel && (
                 <button
                   onClick={onToggleKBPanel}
-                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  className="text-foreground/55 hover:bg-foreground/5 hover:text-foreground inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors"
                   title="Toggle knowledge bases"
                 >
                   <Database className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">KB</span>
                 </button>
               )}
-{%- endif %}
             </div>
-            {onModelChange && (
-              <ModelSelector onChange={onModelChange} />
-            )}
+            {onModelChange && <ModelSelector onChange={onModelChange} />}
           </div>
         </div>
+        <p className="text-foreground/40 mt-2 text-center font-mono text-[10px] uppercase tracking-wider">
+          AI can make mistakes. Verify important information.
+        </p>
       </div>
     </div>
   );

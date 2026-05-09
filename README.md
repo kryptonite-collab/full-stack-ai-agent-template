@@ -122,89 +122,106 @@ fastapi-fullstack create my_ai_app --preset ai-agent     # AI agent with streami
 fastapi-fullstack create my_ai_app --minimal
 ```
 
-### Start Development (Docker — recommended)
+### Start Development
 
-The fastest way to get running — 2 commands:
-
-```bash
-cd my_ai_app
-make docker-up       # Start backend + database + migrations + admin user
-make docker-frontend # Start frontend
-```
-
-**Access:**
-
-- API: <http://localhost:8000>
-- Docs: <http://localhost:8000/docs>
-- Admin Panel: <http://localhost:8000/admin>
-- Frontend: <http://localhost:3000>
-
-> [!TIP]
-> That's it. Docker handles database setup, migrations, and admin user creation automatically.
-
-<details>
-<summary><b>Manual setup (without Docker)</b></summary>
-
-#### 1. Install dependencies
+#### First time on a fresh clone
 
 ```bash
 cd my_ai_app
-make install
+make bootstrap       # = make dev + make seed
 ```
+
+That's it — backend, database, Redis, vector store (if RAG), Celery (if selected) come up, migrations are applied, and a default admin is seeded.
+
+#### Day-to-day
+
+```bash
+make dev             # idempotent: build + up + migrate. Re-run anytime.
+```
+
+`make dev` skips admin seeding (that's a one-shot in `make seed`) so it stays cheap to run after every code/config change.
+
+**Behind the scenes (`make dev`):**
+
+1. Builds the backend Docker image (cached after first run)
+2. Starts services via `docker-compose.dev.yml` (hot-reload bind mounts)
+3. Polls Postgres until ready (`pg_isready` — no fixed sleeps)
+4. Applies pending Alembic migrations (no-op if already at head)
+
+**Then access:**
+
+| | URL | |
+|---|---|---|
+| Backend API | <http://localhost:8000> | |
+| Docs | <http://localhost:8000/docs> | OpenAPI / Swagger |
+| Admin | <http://localhost:8000/admin> | `admin@example.com` / `admin123` (after `make seed`) |
+| Frontend | <http://localhost:3000> | `make dev-frontend` (Docker) or `cd frontend && bun install && bun dev` (local) |
+
+### Day-to-day commands
+
+```bash
+make dev           # bootstrap or restart (no admin re-seed)
+make seed          # one-shot admin creation (no-op if admin exists)
+make dev-down      # stop everything
+make dev-logs      # tail container logs
+make dev-rebuild   # force-rebuild backend image (after pyproject.toml changes)
+make dev-frontend  # start the Next.js container
+```
+
+### Environments
+
+| `make` target | Compose file | When to use |
+|---|---|---|
+| `make dev` | `docker-compose.dev.yml` | Local development with hot-reload + bind-mounted source. |
+| `make stage` | `docker-compose.yml` | Production-like build (no bind mounts) running on localhost. Sanity-check before deploy. |
+| `make prod` | `docker-compose.prod.yml` | Production. Requires `.env.prod` (copy from `.env.prod.example`) + external Nginx using `nginx/nginx.conf`. |
+
+Each env has matching `-down`, `-logs`, `-rebuild` siblings.
 
 > [!NOTE]
-> **Windows Users:** The `make` command requires GNU Make which is not available by default on Windows.
-> Install via [Chocolatey](https://chocolatey.org/) (`choco install make`), use WSL, or run raw commands manually.
-> Each generated project includes a "Manual Commands Reference" section in its README with all commands.
+> **Windows users:** `make` requires GNU Make. Install via [Chocolatey](https://chocolatey.org/) (`choco install make`) or use **WSL2 / Git Bash**. The Docker workflow is identical across macOS, Linux, and WSL2.
 
-#### 2. Start the database
+<details>
+<summary><b>Local backend (no Docker, for IDE breakpoints)</b></summary>
 
-```bash
-# PostgreSQL (with Docker)
-make docker-db
-```
-
-#### 3. Create and apply database migrations
-
-> [!WARNING]
-> Both commands are required! `db-migrate` creates the migration file, `db-upgrade` applies it to the database.
+If you want to run the backend on the host while the database stays in Docker:
 
 ```bash
-# Create initial migration (REQUIRED first time)
-make db-migrate
-# Enter message: "Initial migration"
+cd my_ai_app
+make install                                                # uv sync + pre-commit hooks
 
-# Apply migrations to create tables
-make db-upgrade
+# Start only infrastructure containers
+docker compose -f docker-compose.dev.yml up -d db redis    # add 'milvus etcd minio' if RAG
+
+make db-upgrade                                             # apply migrations
+make create-admin                                           # interactive
+make run                                                    # uvicorn --reload
 ```
 
-#### 4. Create admin user
+</details>
+
+<details>
+<summary><b>Production deploy</b></summary>
 
 ```bash
-make create-admin
-# Enter email and password when prompted
+# On your server
+git clone <your-repo>
+cd my_ai_app
+
+cp .env.prod.example .env.prod                  # fill in real secrets
+# Configure your nginx host using nginx/nginx.conf as reference
+
+make prod                                       # builds + starts + migrates
+make prod-logs                                  # tail logs
 ```
 
-#### 5. Start the backend
+For frontend deployment to **Vercel**:
 
 ```bash
-make run
+cd frontend && npx vercel --prod
 ```
 
-#### 6. Start the frontend (new terminal)
-
-```bash
-cd frontend
-bun install
-bun dev
-```
-
-**Access:**
-
-- API: <http://localhost:8000>
-- Docs: <http://localhost:8000/docs>
-- Admin Panel: <http://localhost:8000/admin> (login with admin user)
-- Frontend: <http://localhost:3000>
+In the Vercel dashboard set `BACKEND_URL`, `BACKEND_WS_URL`, `NEXT_PUBLIC_AUTH_ENABLED=true`.
 
 </details>
 
@@ -376,8 +393,12 @@ Generated projects include **CLAUDE.md** and **AGENTS.md** files optimized for A
 
 - **React 19** + **TypeScript** + **Tailwind CSS v4**
 - **AI Chat Interface** - WebSocket streaming, tool call visualization
-- **Authentication** - HTTP-only cookies, auto-refresh
-- **Dark Mode** + **i18n**
+- **Authentication** - HTTP-only cookies, auto-refresh, password reset, magic link
+- **Marketing Site** - hero, pricing, FAQ, blog, contact form, legal pages (PL + EN)
+- **User Settings** - profile, API keys CRUD (`sk_*` tokens), onboarding tracking
+- **Admin Panel** - workspace stats, Stripe events browser
+- **SEO** - per-page metadata, OG image, sitemap, robots, manifest, favicons
+- **Dark Mode** + **i18n** (PL/EN via next-intl, locale-prefixed routes)
 
 ### 🔌 20+ Enterprise Integrations
 

@@ -2,7 +2,7 @@
 """create plan and price tables
 
 Revision ID: 0011_create_plan_price_tables
-Revises: 0010_add_billing_seats_to_organizations
+Revises: 0010_org_billing_seats
 Create Date: {{ cookiecutter.generated_at }}
 
 Creates:
@@ -17,7 +17,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from alembic import op
 
 revision = "0011_create_plan_price_tables"
-down_revision = "0010_add_billing_seats_to_organizations"
+down_revision = "0010_org_billing_seats"
 branch_labels = None
 depends_on = None
 
@@ -94,7 +94,7 @@ Revision ID: 0011_create_plan_price_tables
 """
 
 revision = "0011_create_plan_price_tables"
-down_revision = "0010_add_billing_seats_to_organizations"
+down_revision = "0010_org_billing_seats"
 branch_labels = None
 depends_on = None
 

@@ -55,6 +55,10 @@ from app.db.models.audit_log import AppAdminAuditLog
 {%- set _ = models.append("KnowledgeBase") %}
 from app.db.models.knowledge_base import KnowledgeBase
 {%- endif %}
+{%- if cookiecutter.use_auth %}
+{%- set _ = models.append("ApiKey") %}
+from app.db.models.api_key import ApiKey
+{%- endif %}
 {%- if models %}
 
 __all__ = {{ models }}

@@ -1,6 +1,6 @@
-{%- if cookiecutter.use_jwt %}
 """User schemas."""
 
+from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
@@ -51,6 +51,10 @@ class UserUpdate(BaseSchema):
     full_name: str | None = Field(default=None, max_length=255)
     is_active: bool | None = None
     role: UserRole | None = None
+    onboarding_completed_at: datetime | None = Field(
+        default=None,
+        description="Set to a timestamp to mark onboarding complete; null to reset.",
+    )
 
     @field_validator("email")
     @classmethod
@@ -61,22 +65,13 @@ class UserUpdate(BaseSchema):
 class UserRead(UserBase, TimestampSchema):
     """Schema for reading a user."""
 
-{%- if cookiecutter.use_postgresql %}
     id: UUID
-{%- elif cookiecutter.use_sqlite or cookiecutter.use_mongodb %}
-    id: str
-{%- endif %}
     role: UserRole = UserRole.USER
-{%- if cookiecutter.enable_oauth %}
-    oauth_provider: str | None = None
-{%- endif %}
     avatar_url: str | None = None
+    onboarding_completed_at: datetime | None = None
 
 
 class UserInDB(UserRead):
     """User schema with hashed password (internal use)."""
 
     hashed_password: str
-{%- else %}
-"""User schemas - not configured."""
-{%- endif %}

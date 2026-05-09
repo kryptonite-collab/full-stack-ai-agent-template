@@ -1,5 +1,3 @@
-{%- if cookiecutter.use_jwt and cookiecutter.use_database %}
-{% raw %}
 "use client";
 
 import { useEffect, useState } from "react";
@@ -32,19 +30,10 @@ interface ShareDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function ShareDialog({
-  conversationId,
-  open,
-  onOpenChange,
-}: ShareDialogProps) {
+export function ShareDialog({ conversationId, open, onOpenChange }: ShareDialogProps) {
   const t = useTranslations("chat");
-  const {
-    shares,
-    isLoading,
-    shareConversation,
-    fetchShares,
-    revokeShare,
-  } = useConversationShares();
+  const { shares, isLoading, shareConversation, fetchShares, revokeShare } =
+    useConversationShares();
   const [email, setEmail] = useState("");
   const [permission, setPermission] = useState<"view" | "edit">("view");
   const [shareLink, setShareLink] = useState<string | null>(null);
@@ -125,9 +114,7 @@ export function ShareDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{t("shareConversation")}</DialogTitle>
-          <DialogDescription>
-            {t("shareDescription")}
-          </DialogDescription>
+          <DialogDescription>{t("shareDescription")}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -139,10 +126,7 @@ export function ShareDialog({
               onChange={(e) => setEmail(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleShare()}
             />
-            <Select
-              value={permission}
-              onValueChange={(v) => setPermission(v as "view" | "edit")}
-            >
+            <Select value={permission} onValueChange={(v) => setPermission(v as "view" | "edit")}>
               <SelectTrigger className="w-24">
                 <SelectValue />
               </SelectTrigger>
@@ -151,11 +135,16 @@ export function ShareDialog({
                 <SelectItem value="edit">Edit</SelectItem>
               </SelectContent>
             </Select>
-            <Button onClick={handleShare} disabled={isLoading || isSharing} size="icon">
+            <Button
+              onClick={handleShare}
+              disabled={isLoading || isSharing}
+              size="icon"
+              aria-label="Share conversation"
+            >
               {isSharing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
               ) : (
-                <UserPlus className="h-4 w-4" />
+                <UserPlus className="h-4 w-4" aria-hidden />
               )}
             </Button>
           </div>
@@ -180,13 +169,14 @@ export function ShareDialog({
                 variant="secondary"
                 size="icon"
                 onClick={handleCopyLink}
+                aria-label="Copy share link"
               >
-                <Copy className="h-4 w-4" />
+                <Copy className="h-4 w-4" aria-hidden />
               </Button>
             )}
           </div>
           {shareLink && (
-            <p className="text-xs text-muted-foreground break-all">
+            <p className="text-muted-foreground text-xs break-all">
               {copied ? "Copied!" : shareLink}
             </p>
           )}
@@ -205,9 +195,7 @@ export function ShareDialog({
                       {share.shared_with_email || share.shared_with || "Link"}
                     </span>
                     <Badge variant="secondary">{share.permission}</Badge>
-                    {share.share_token && (
-                      <Badge variant="outline">Link</Badge>
-                    )}
+                    {share.share_token && <Badge variant="outline">Link</Badge>}
                   </div>
                   <Button
                     variant="ghost"
@@ -231,5 +219,3 @@ export function ShareDialog({
     </Dialog>
   );
 }
-{% endraw %}
-{%- endif %}

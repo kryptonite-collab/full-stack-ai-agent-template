@@ -63,7 +63,7 @@ class TestMemberService:
 
         call_count = 0
 
-        async def mock_get(**kwargs):
+        async def mock_get(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             return mock_requester if call_count == 1 else mock_target
@@ -87,7 +87,7 @@ class TestMemberService:
 
         call_count = 0
 
-        async def mock_get(**kwargs):
+        async def mock_get(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             return mock_requester if call_count == 1 else mock_target
@@ -124,7 +124,7 @@ class TestMemberService:
 
         call_count = 0
 
-        async def mock_get(**kwargs):
+        async def mock_get(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             return mock_requester if call_count == 1 else mock_target

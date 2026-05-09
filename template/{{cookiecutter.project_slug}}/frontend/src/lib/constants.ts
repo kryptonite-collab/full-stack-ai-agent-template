@@ -33,30 +33,18 @@ export const ROUTES = {
   CHAT: "/chat",
   PROFILE: "/profile",
   SETTINGS: "/settings",
-{%- if cookiecutter.enable_rag %}
   RAG: "/rag",
-{%- endif %}
-{%- if cookiecutter.use_jwt %}
   ADMIN: "/admin",
   ADMIN_USERS: "/admin/users",
   ADMIN_CONVERSATIONS: "/admin/conversations",
   ADMIN_RATINGS: "/admin/ratings",
-{%- endif %}
-{%- if cookiecutter.enable_teams and cookiecutter.use_jwt %}
   ORGS: "/orgs",
   ORG_MEMBERS: (id: string) => `/orgs/${id}/members`,
   ORG_SETTINGS: (id: string) => `/orgs/${id}/settings`,
-{%- endif %}
-{%- if cookiecutter.enable_teams and cookiecutter.enable_rag and cookiecutter.use_jwt %}
   KB: "/kb",
   KB_DETAIL: (id: string) => `/kb/${id}`,
-{%- endif %}
-{%- if cookiecutter.enable_billing and cookiecutter.enable_teams %}
   BILLING: "/billing",
-{%- endif %}
-{%- if cookiecutter.enable_billing %}
   PRICING: "/pricing",
-{%- endif %}
 } as const;
 
 // WebSocket URL (for chat - direct to backend, use wss:// in production)

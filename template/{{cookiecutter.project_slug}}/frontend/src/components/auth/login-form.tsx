@@ -4,13 +4,13 @@ import { useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
+import { ArrowRight } from "lucide-react";
+
+import { OAuthButtons, OAuthDivider } from "@/components/auth/oauth-buttons";
+import { Button, Input, Label } from "@/components/ui";
 import { useAuth } from "@/hooks";
-import { Button, Input, Label, Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui";
 import { ApiError } from "@/lib/api-client";
 import { ROUTES } from "@/lib/constants";
-{%- if cookiecutter.enable_oauth_google %}
-import { GoogleIcon } from "@/components/icons/google-icon";
-{%- endif %}
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -21,9 +21,6 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-{%- if cookiecutter.enable_oauth_google %}
-  const [isOAuthLoading, setIsOAuthLoading] = useState(false);
-{%- endif %}
   const [emailTouched, setEmailTouched] = useState(false);
 
   const emailValid = !email || EMAIL_RE.test(email);
@@ -44,89 +41,94 @@ export function LoginForm() {
     }
   };
 
-{%- if cookiecutter.enable_oauth_google %}
-
-  const handleGoogleLogin = () => {
-    setIsOAuthLoading(true);
-    // Redirect to backend OAuth endpoint
-    window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/oauth/google/login`;
-  };
-{%- endif %}
-
   return (
-    <Card className="w-full max-w-md mx-auto">
-      <CardHeader>
-        <CardTitle className="text-2xl text-center">{t("login")}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">{t("email")}</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onBlur={() => setEmailTouched(true)}
-              required
-              disabled={isLoading}
-              className={emailTouched && email && !emailValid ? "border-destructive" : ""}
-            />
-            {emailTouched && email && !emailValid && (
-              <p className="text-destructive text-xs">{t("emailRequired")}</p>
-            )}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">{t("password")}</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              disabled={isLoading}
-            />
-          </div>
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
-          )}
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? t("loggingIn") : t("login")}
-          </Button>
-        </form>
-
-{%- if cookiecutter.enable_oauth_google %}
-
-        <div className="relative my-6">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-card px-2 text-muted-foreground">{t("orContinueWith")}</span>
-          </div>
-        </div>
-
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full"
-          onClick={handleGoogleLogin}
-          disabled={isOAuthLoading || isLoading}
-        >
-          <GoogleIcon className="mr-2 h-4 w-4" />
-          {isOAuthLoading ? t("redirecting") : t("continueWithGoogle")}
-        </Button>
-{%- endif %}
-      </CardContent>
-      <CardFooter className="justify-center">
-        <p className="text-sm text-muted-foreground">
+    <div className="space-y-7">
+      <div className="space-y-2">
+        <span className="eyebrow text-foreground/55">Welcome back</span>
+        <h1 className="text-display-md text-foreground">{t("login")}</h1>
+        <p className="text-foreground/65 text-sm">
           {t("noAccount")}{" "}
-          <Link href={ROUTES.REGISTER} className="text-primary hover:underline">
+          <Link href={ROUTES.REGISTER} className="text-foreground hover:text-foreground/80 font-medium underline-offset-4 hover:underline">
             {t("register")}
           </Link>
         </p>
-      </CardFooter>
-    </Card>
+      </div>
+
+      <OAuthButtons />
+      <OAuthDividerIfProviders />
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="email" className="text-foreground/80 text-xs font-medium uppercase tracking-wider">
+            {t("email")}
+          </Label>
+          <Input
+            id="email"
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onBlur={() => setEmailTouched(true)}
+            required
+            disabled={isLoading}
+            autoComplete="email"
+            className={`h-11 rounded-xl ${emailTouched && email && !emailValid ? "border-destructive" : ""}`}
+          />
+          {emailTouched && email && !emailValid && (
+            <p className="text-destructive text-xs">{t("emailRequired")}</p>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="password" className="text-foreground/80 text-xs font-medium uppercase tracking-wider">
+              {t("password")}
+            </Label>
+            <Link
+              href="/forgot-password"
+              className="text-foreground/55 hover:text-foreground text-xs font-medium underline-offset-4 hover:underline"
+            >
+              Forgot?
+            </Link>
+          </div>
+          <Input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            disabled={isLoading}
+            autoComplete="current-password"
+            className="h-11 rounded-xl"
+          />
+        </div>
+
+        {error && (
+          <p className="border-destructive/30 bg-destructive/5 text-destructive rounded-lg border px-3 py-2 text-sm">
+            {error}
+          </p>
+        )}
+
+        <Button
+          type="submit"
+          disabled={isLoading}
+          className="h-11 w-full rounded-full bg-foreground text-background hover:bg-foreground/90"
+        >
+          {isLoading ? (
+            t("loggingIn")
+          ) : (
+            <>
+              {t("login")}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </>
+          )}
+        </Button>
+      </form>
+    </div>
   );
+}
+
+function OAuthDividerIfProviders() {
+  if (!process.env.NEXT_PUBLIC_OAUTH_PROVIDERS) return null;
+  return <OAuthDivider />;
 }

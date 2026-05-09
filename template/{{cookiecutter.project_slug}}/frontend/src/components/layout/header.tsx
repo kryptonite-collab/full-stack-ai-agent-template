@@ -8,31 +8,35 @@ import { ThemeToggle } from "@/components/theme";
 import { LanguageSwitcherCompact } from "@/components/language-switcher";
 import { APP_NAME, ROUTES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { LogOut, Menu, LayoutDashboard, MessageSquare{%- if cookiecutter.enable_rag %}, Database{%- endif %}{%- if cookiecutter.use_jwt %}, UserCircle{%- endif %}{%- if cookiecutter.enable_teams and cookiecutter.use_jwt %}, Building2{%- endif %}{%- if cookiecutter.enable_billing and cookiecutter.enable_teams %}, CreditCard{%- endif %} } from "lucide-react";
+import {
+  LogOut,
+  Menu,
+  LayoutDashboard,
+  MessageSquare,
+  Database,
+  UserCircle,
+  Building2,
+  CreditCard,
+} from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui";
 import { useSidebarStore } from "@/stores";
-{%- if cookiecutter.enable_teams and cookiecutter.use_jwt %}
+{%- if cookiecutter.enable_teams %}
 import { OrgSwitcher } from "@/components/teams";
 {%- endif %}
 
 const adminNavItems = [
   { name: "Dashboard", href: ROUTES.DASHBOARD, icon: LayoutDashboard, adminOnly: true },
   { name: "Chat", href: ROUTES.CHAT, icon: MessageSquare, adminOnly: false },
-{%- if cookiecutter.enable_rag and not (cookiecutter.enable_teams and cookiecutter.use_jwt) %}
-  { name: "Knowledge Base", href: ROUTES.RAG, icon: Database, adminOnly: true },
-{%- endif %}
-{%- if cookiecutter.enable_teams and cookiecutter.enable_rag and cookiecutter.use_jwt %}
+{%- if cookiecutter.enable_teams and cookiecutter.enable_rag %}
   { name: "Knowledge Bases", href: ROUTES.KB, icon: Database, adminOnly: false },
 {%- endif %}
-{%- if cookiecutter.enable_teams and cookiecutter.use_jwt %}
+{%- if cookiecutter.enable_teams %}
   { name: "Organizations", href: ROUTES.ORGS, icon: Building2, adminOnly: false },
 {%- endif %}
-{%- if cookiecutter.enable_billing and cookiecutter.enable_teams %}
+{%- if cookiecutter.enable_billing %}
   { name: "Billing", href: ROUTES.BILLING, icon: CreditCard, adminOnly: false },
 {%- endif %}
-{%- if cookiecutter.use_jwt %}
   { name: "Profile", href: ROUTES.PROFILE, icon: UserCircle, adminOnly: false },
-{%- endif %}
 ];
 
 export function Header() {
@@ -56,31 +60,33 @@ export function Header() {
 
           {/* Desktop nav links */}
           <nav className="hidden items-center gap-0.5 md:flex">
-            {adminNavItems.filter(item => !item.adminOnly || user?.role === "admin").map((item) => {
-              const isActive = pathname?.includes(item.href);
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  aria-current={isActive ? "page" : undefined}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-secondary text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <item.icon className="h-3.5 w-3.5" />
-                  {item.name}
-                </Link>
-              );
-            })}
+            {adminNavItems
+              .filter((item) => !item.adminOnly || user?.role === "admin")
+              .map((item) => {
+                const isActive = pathname?.includes(item.href);
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    aria-current={isActive ? "page" : undefined}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                      isActive
+                        ? "bg-secondary text-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <item.icon className="h-3.5 w-3.5" />
+                    {item.name}
+                  </Link>
+                );
+              })}
           </nav>
         </div>
 
         {/* Right: org switcher, language, theme, user */}
         <div className="flex items-center gap-2 sm:gap-3">
-{%- if cookiecutter.enable_teams and cookiecutter.use_jwt %}
+{%- if cookiecutter.enable_teams %}
           {isAuthenticated && <OrgSwitcher />}
 {%- endif %}
           <LanguageSwitcherCompact />
@@ -90,7 +96,9 @@ export function Header() {
               <Button variant="ghost" size="sm" asChild className="h-10 px-2 sm:px-3">
                 <Link href={ROUTES.PROFILE} className="flex items-center gap-2">
                   <Avatar className="h-6 w-6">
-                    {user?.avatar_url && <AvatarImage src={`/api/users/avatar/${user.id}`} alt={user.email} />}
+                    {user?.avatar_url && (
+                      <AvatarImage src={`/api/users/avatar/${user.id}`} alt={user.email} />
+                    )}
                     <AvatarFallback className="bg-brand/10 text-brand text-[10px]">
                       {user?.email?.substring(0, 2).toUpperCase() || "U"}
                     </AvatarFallback>

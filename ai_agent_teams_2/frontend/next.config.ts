@@ -1,7 +1,12 @@
+import createMDX from "@next/mdx";
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n.ts");
+const withMDX = createMDX({
+  // No extra remark/rehype plugins for now — keep build simple.
+  // next-mdx-remote/rsc handles the actual blog post compilation.
+});
 
 // Content Security Policy directives
 const ContentSecurityPolicy = `
@@ -47,6 +52,7 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  pageExtensions: ["ts", "tsx", "mdx"],
 
   // Security headers
   async headers() {
@@ -69,4 +75,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withNextIntl(nextConfig);
+export default withNextIntl(withMDX(nextConfig));

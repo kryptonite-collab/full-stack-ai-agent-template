@@ -1,92 +1,96 @@
 import Link from "next/link";
-import { ThemeToggle } from "@/components/theme";
-import { APP_NAME, APP_DESCRIPTION, ROUTES } from "@/lib/constants";
-import { Bot, MessageSquare, Database, Shield, Zap, Lock } from "lucide-react";
 
-const features = [
-  { icon: MessageSquare, label: "AI Chat" },
-  { icon: Database, label: "Knowledge Base" },
-  { icon: Shield, label: "Secure Auth" },
-  { icon: Zap, label: "Real-time" },
+import { ThemeToggle } from "@/components/theme";
+import { APP_NAME, ROUTES } from "@/lib/constants";
+
+const HIGHLIGHTS = [
+  "Streaming chat with tool calls",
+  "Knowledge base over your docs",
+  "Stripe billing & teams in a click",
 ];
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="bg-background min-h-screen lg:grid lg:grid-cols-2">
-      {/* Left — hero panel (desktop only) */}
-      <div className="relative hidden flex-col justify-between overflow-hidden bg-zinc-100 p-10 lg:flex dark:bg-zinc-950">
-        <div className="pointer-events-none absolute inset-0">
-          <div className="grid-bg absolute inset-0 opacity-30 dark:opacity-60" />
-          <div className="bg-brand/[0.08] dark:bg-brand/[0.15] absolute top-1/2 left-1/2 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[150px]" />
-          <div className="bg-brand/[0.05] dark:bg-brand/[0.08] absolute top-0 right-0 h-[300px] w-[400px] rounded-full blur-[120px]" />
+    <div className="bg-background text-foreground min-h-screen lg:grid lg:grid-cols-[1.05fr_1fr]">
+      {/* Left — brand panel (dark, hidden on mobile) */}
+      <aside className="theme-dark relative hidden flex-col justify-between overflow-hidden bg-background text-foreground p-10 lg:flex lg:p-12">
+        <div aria-hidden className="pointer-events-none absolute inset-0">
+          <div className="bg-grid absolute inset-0 opacity-[0.6]" />
+          <div className="bg-brand/[0.18] absolute -top-32 -left-20 h-[420px] w-[420px] rounded-full blur-[120px]" />
+          <div className="bg-brand/[0.10] absolute right-0 bottom-10 h-[320px] w-[420px] rounded-full blur-[140px]" />
         </div>
 
         <div className="relative z-10">
-          <Link href={ROUTES.HOME} className="flex items-center gap-2">
-            <div className="bg-brand flex h-8 w-8 items-center justify-center rounded-lg">
-              <Lock className="h-4 w-4 text-white" />
-            </div>
-            <span className="text-lg font-bold text-zinc-900 dark:text-white">{APP_NAME}</span>
+          <Link
+            href={ROUTES.HOME}
+            className="font-display text-foreground inline-flex items-center gap-2 text-lg font-bold tracking-tight"
+          >
+            <span aria-hidden className="bg-brand inline-block h-3 w-3 rounded-full" />
+            {APP_NAME}
           </Link>
         </div>
 
-        <div className="relative z-10">
-          <div className="mb-6 inline-flex items-center rounded-full border border-zinc-200 bg-zinc-200/50 px-3 py-1 text-sm text-zinc-500 dark:border-white/10 dark:bg-white/5 dark:text-zinc-400">
-            <Bot className="text-brand mr-2 h-3.5 w-3.5" />
-            {APP_DESCRIPTION}
-          </div>
-          <h1 className="mb-4 text-4xl leading-tight font-bold tracking-tight text-zinc-900 xl:text-5xl dark:text-white">
-            Build intelligent{" "}
-            <span className="from-brand to-brand-hover bg-gradient-to-r bg-clip-text text-transparent">
-              applications
-            </span>{" "}
-            faster.
-          </h1>
-          <p className="max-w-md text-lg leading-relaxed text-zinc-500 dark:text-zinc-400">
-            Production-ready platform with AI agents, vector search, and enterprise-grade
-            authentication.
+        <div className="relative z-10 max-w-[28rem]">
+          <span className="eyebrow-badge mb-8">An AI assistant that knows your work</span>
+          <h2 className="text-display-lg text-foreground mb-6 leading-[1.05]">
+            Ship the AI feature{" "}
+            <span className="font-accent text-foreground/95">your team</span>{" "}
+            actually wants.
+          </h2>
+          <p className="text-foreground/65 max-w-md text-base leading-relaxed">
+            Auth, billing, vector search, agents — already wired. You ship the product, not the
+            plumbing.
           </p>
 
-          {features.length > 0 && (
-            <div className="mt-8 flex flex-wrap gap-3">
-              {features.map((f) => (
-                <div
-                  key={f.label}
-                  className="flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-200/50 px-4 py-2 text-sm text-zinc-600 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300"
-                >
-                  <f.icon className="text-brand h-4 w-4" />
-                  {f.label}
-                </div>
-              ))}
-            </div>
-          )}
+          <ul className="mt-10 space-y-3">
+            {HIGHLIGHTS.map((line) => (
+              <li key={line} className="text-foreground/85 flex items-center gap-3 text-sm">
+                <span aria-hidden className="bg-brand h-1.5 w-1.5 shrink-0 rounded-full" />
+                {line}
+              </li>
+            ))}
+          </ul>
         </div>
 
-        <div className="relative z-10">
-          <blockquote className="border-brand/40 border-l-2 pl-4">
-            <p className="text-sm leading-relaxed text-zinc-400 italic dark:text-zinc-500">
-              &ldquo;Ship AI-powered apps in days, not months. Everything you need from auth to RAG,
-              pre-configured and ready to deploy.&rdquo;
-            </p>
+        <figure className="relative z-10 max-w-md">
+          <blockquote className="font-display text-foreground/85 text-lg leading-snug">
+            &ldquo;Replaced four SaaS tools and shipped our first AI feature in two weeks.&rdquo;
           </blockquote>
-        </div>
-      </div>
+          <figcaption className="mt-4 flex items-center gap-3">
+            <span className="bg-brand text-brand-foreground flex h-9 w-9 items-center justify-center rounded-full font-mono text-xs font-semibold">
+              MC
+            </span>
+            <div>
+              <p className="text-foreground text-sm font-semibold">Maya Chen</p>
+              <p className="text-foreground/55 text-xs">CTO · Lumen Labs</p>
+            </div>
+          </figcaption>
+        </figure>
+      </aside>
 
-      {/* Right — form (contrasting background) */}
-      <div className="flex flex-col bg-zinc-50 dark:bg-zinc-900/50">
-        <div className="flex h-14 items-center justify-between px-4 sm:px-8">
-          <Link href={ROUTES.HOME} className="text-lg font-bold tracking-tight lg:hidden">
+      {/* Right — form panel (cream/light, scrollable on small heights) */}
+      <main id="main" className="bg-background relative flex flex-col">
+        <header className="flex h-16 items-center justify-between px-6 sm:px-10">
+          <Link
+            href={ROUTES.HOME}
+            className="font-display text-foreground inline-flex items-center gap-2 text-base font-bold tracking-tight lg:hidden"
+          >
+            <span aria-hidden className="bg-brand inline-block h-2.5 w-2.5 rounded-full" />
             {APP_NAME}
           </Link>
           <div className="ml-auto">
             <ThemeToggle />
           </div>
-        </div>
+        </header>
 
-        <div className="flex flex-1 items-center justify-center px-4 py-8 sm:px-8">
+        <div className="flex flex-1 items-center justify-center px-6 py-10 sm:px-10">
           <div className="w-full max-w-md">{children}</div>
         </div>
-      </div>
+
+        <footer className="text-foreground/50 px-6 py-6 font-mono text-[11px] uppercase tracking-wider sm:px-10">
+          © {new Date().getFullYear()} {APP_NAME}
+        </footer>
+      </main>
     </div>
   );
 }

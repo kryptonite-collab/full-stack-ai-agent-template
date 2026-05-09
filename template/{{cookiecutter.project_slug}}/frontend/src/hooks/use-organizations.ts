@@ -1,6 +1,5 @@
-{%- if cookiecutter.enable_teams and cookiecutter.use_jwt %}
 "use client";
-{% raw %}
+
 import { useCallback } from "react";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api-client";
@@ -17,7 +16,7 @@ export function useOrganizations() {
       setOrgs(data.items);
       if (!activeOrgId && data.items.length > 0) {
         const personal = data.items.find((o) => o.is_personal) ?? data.items[0];
-        setActiveOrgId(personal.id);
+        if (personal) setActiveOrgId(personal.id);
       }
     } catch {
       toast.error("Failed to load organizations");
@@ -36,7 +35,7 @@ export function useOrganizations() {
         return null;
       }
     },
-    [addOrg]
+    [addOrg],
   );
 
   const patchOrg = useCallback(
@@ -51,7 +50,7 @@ export function useOrganizations() {
         return null;
       }
     },
-    [updateOrg]
+    [updateOrg],
   );
 
   const deleteOrg = useCallback(
@@ -64,14 +63,14 @@ export function useOrganizations() {
         toast.error("Failed to delete organization");
       }
     },
-    [removeOrg]
+    [removeOrg],
   );
 
   const switchOrg = useCallback(
     (id: string) => {
       setActiveOrgId(id);
     },
-    [setActiveOrgId]
+    [setActiveOrgId],
   );
 
   return {
@@ -85,5 +84,3 @@ export function useOrganizations() {
     switchOrg,
   };
 }
-{% endraw %}
-{%- endif %}

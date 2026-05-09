@@ -1,30 +1,131 @@
-.PHONY: install format lint test run clean help db-init
+.PHONY: install format lint test run clean help db-init dev dev-down dev-logs dev-rebuild dev-frontend stage stage-down prod prod-down
 
-# === Quick Start (one command to rule them all) ===
-{%- if cookiecutter.enable_docker %}
-quickstart: install docker-up
-{%- if cookiecutter.use_postgresql or cookiecutter.use_sqlite %}
-	@echo "Waiting for database to be ready..."
-	@sleep 8
-	@echo "Creating initial migration..."
-	cd backend && uv run {{ cookiecutter.project_slug }} db migrate -m "initial" || true
-	@echo "Applying migrations..."
-	cd backend && uv run {{ cookiecutter.project_slug }} db upgrade
+# === Environments ===========================================================
+# `make dev`   — local development (docker-compose.dev.yml + bind-mounted source)
+# `make stage` — staging (docker-compose.yml — built images, no live reload)
+# `make prod`  — production (docker-compose.prod.yml — needs .env.prod + nginx)
+# Each env has matching -down / -logs / -rebuild siblings.
+
+{%- if cookiecutter.enable_docker and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
+
+# Wait for postgres to accept connections. Polls pg_isready instead of a
+# fixed sleep — handles slow startups and cold-start image pulls.
+define _wait_for_db
+	@echo "Waiting for PostgreSQL ($(1))..."
+	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do \
+		if docker compose -f $(1) exec -T db pg_isready -U postgres >/dev/null 2>&1; then \
+			echo "  ✅ DB ready"; exit 0; \
+		fi; \
+		printf '.'; sleep 2; \
+	done; \
+	echo "  ❌ DB not ready after 30s — check 'make dev-logs'"; exit 1
+endef
 {%- endif %}
-{%- if cookiecutter.use_jwt %}
-	@echo "Creating admin user (admin@example.com / admin123)..."
-	cd backend && uv run {{ cookiecutter.project_slug }} user create --email admin@example.com --password admin123 --superuser 2>/dev/null || true
+
+{%- if cookiecutter.enable_docker %}
+
+# === Local dev: build → up → migrate ===
+# Idempotent — re-run anytime. Migrations are no-ops when already at head;
+# admin seeding is a separate target (`make seed`) so re-running `make dev`
+# doesn't keep retrying user creation.
+dev:
+	@echo "▶ Building backend image…"
+	docker compose -f docker-compose.dev.yml build app
+	@echo "▶ Starting services…"
+	docker compose -f docker-compose.dev.yml up -d
+{%- if cookiecutter.use_postgresql or cookiecutter.use_sqlite %}
+	$(call _wait_for_db,docker-compose.dev.yml)
+	@echo "▶ Applying migrations…"
+	docker compose -f docker-compose.dev.yml exec -T app {{ cookiecutter.project_slug }} db upgrade
 {%- endif %}
 	@echo ""
-	@echo "🚀 Ready! All services running:"
+	@echo "🚀 Dev stack ready:"
 	@echo "   API:      http://localhost:{{ cookiecutter.backend_port }}"
 	@echo "   Docs:     http://localhost:{{ cookiecutter.backend_port }}/docs"
+{%- if cookiecutter.use_jwt %}
+	@echo "   Admin:    http://localhost:{{ cookiecutter.backend_port }}/admin"
+{%- endif %}
 {%- if cookiecutter.use_frontend %}
-	@echo "   Frontend: Run 'cd frontend && bun install && bun dev' or 'make docker-frontend'"
+	@echo "   Frontend: http://localhost:{{ cookiecutter.frontend_port }}  (run 'make dev-frontend' or 'cd frontend && bun dev')"
 {%- endif %}
 {%- if cookiecutter.use_jwt %}
-	@echo "   Admin:    http://localhost:{{ cookiecutter.backend_port }}/admin (admin@example.com / admin123)"
+	@echo ""
+	@echo "First time? Run 'make seed' to create the default admin user."
 {%- endif %}
+
+{%- if cookiecutter.use_jwt %}
+
+# === First-time setup: seed default admin user (one-shot) ===
+# Skipped when admin@example.com already exists. Safe to run again — exits
+# clean either way. Replace email/password before deploying anywhere real.
+seed:
+	@echo "▶ Seeding admin user (admin@example.com / admin123)…"
+	@if docker compose -f docker-compose.dev.yml exec -T app \
+		{{ cookiecutter.project_slug }} user list 2>/dev/null \
+		| grep -q "admin@example.com"; then \
+		echo "  (admin@example.com already exists — nothing to do)"; \
+	else \
+		docker compose -f docker-compose.dev.yml exec -T app \
+			{{ cookiecutter.project_slug }} user create \
+				--email admin@example.com --password admin123 --superuser \
+		&& echo "  ✅ Admin created. Login at http://localhost:{{ cookiecutter.backend_port }}/admin"; \
+	fi
+
+# Convenience: bootstrap a fresh checkout end-to-end.
+bootstrap: dev seed
+{%- else %}
+
+bootstrap: dev
+{%- endif %}
+
+dev-down:
+	docker compose -f docker-compose.dev.yml down
+
+dev-logs:
+	docker compose -f docker-compose.dev.yml logs -f
+
+dev-rebuild:
+	docker compose -f docker-compose.dev.yml build --no-cache app
+	docker compose -f docker-compose.dev.yml up -d --force-recreate app
+
+{%- if cookiecutter.use_frontend %}
+dev-frontend:
+	docker compose -f docker-compose.frontend.yml up -d
+	@echo ""
+	@echo "✅ Frontend at http://localhost:{{ cookiecutter.frontend_port }}  (backend must be up — 'make dev')"
+{%- endif %}
+
+# === Staging: built images, no bind mounts (production-like, local DB) ===
+stage:
+	docker compose -f docker-compose.yml up -d --build
+{%- if cookiecutter.use_postgresql or cookiecutter.use_sqlite %}
+	$(call _wait_for_db,docker-compose.yml)
+	docker compose -f docker-compose.yml exec -T app {{ cookiecutter.project_slug }} db upgrade
+{%- endif %}
+	@echo "✅ Staging stack at http://localhost:{{ cookiecutter.backend_port }}"
+
+stage-down:
+	docker compose -f docker-compose.yml down
+
+# === Production: external Nginx, .env.prod required, real secrets ===
+prod:
+	@test -f .env.prod || (echo "❌ .env.prod missing — copy from .env.prod.example and fill in values" && exit 1)
+	docker compose -f docker-compose.prod.yml up -d --build
+{%- if cookiecutter.use_postgresql or cookiecutter.use_sqlite %}
+	@echo "▶ Waiting for DB then running migrations…"
+	@sleep 5
+	docker compose -f docker-compose.prod.yml exec -T app {{ cookiecutter.project_slug }} db upgrade
+{%- endif %}
+	@echo "✅ Production stack up. Configure your nginx host with nginx/nginx.conf"
+
+prod-down:
+	docker compose -f docker-compose.prod.yml down
+
+prod-logs:
+	docker compose -f docker-compose.prod.yml logs -f
+
+# Legacy alias
+quickstart: dev
 {%- endif %}
 
 # === Setup ===
@@ -297,12 +398,28 @@ help:
 	@echo "======================================"
 	@echo ""
 {%- if cookiecutter.enable_docker %}
-	@echo "Quick Start:"
-	@echo "  make quickstart    Install + start all services + setup DB"
+	@echo "🚀 Bootstrap (first-time setup):"
+	@echo "  make bootstrap      'make dev' + 'make seed' — full setup from a fresh clone"
+	@echo ""
+	@echo "Day-to-day dev:"
+	@echo "  make dev            Build + start dev stack + apply migrations (idempotent)"
+{%- if cookiecutter.use_jwt %}
+	@echo "  make seed           One-shot admin seed (admin@example.com / admin123)"
+{%- endif %}
+	@echo "  make dev-down       Stop dev stack"
+	@echo "  make dev-logs       Tail dev container logs"
+	@echo "  make dev-rebuild    Force-rebuild backend image"
+{%- if cookiecutter.use_frontend %}
+	@echo "  make dev-frontend   Start frontend container (after 'make dev')"
+{%- endif %}
+	@echo ""
+	@echo "📦 Other environments:"
+	@echo "  make stage          Production-like stack on localhost (no bind mounts)"
+	@echo "  make prod           Production stack (requires .env.prod + nginx)"
 	@echo ""
 {%- endif %}
-	@echo "Setup:"
-	@echo "  make install       Install dependencies + pre-commit hooks"
+	@echo "Setup (without Docker):"
+	@echo "  make install       Install Python deps + pre-commit hooks"
 	@echo ""
 	@echo "Development:"
 	@echo "  make run           Start dev server (with hot reload)"

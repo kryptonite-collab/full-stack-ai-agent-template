@@ -7,6 +7,6 @@ export { ChatInput } from "./chat-input";
 export { CopyButton } from "./copy-button";
 export { MarkdownContent } from "./markdown-content";
 export { ConversationSidebar } from "./conversation-sidebar";
-{%- if cookiecutter.enable_teams and cookiecutter.enable_rag and cookiecutter.use_jwt %}
+{%- if cookiecutter.enable_teams and cookiecutter.enable_rag %}
 export { KBPanel } from "./kb-panel";
 {%- endif %}

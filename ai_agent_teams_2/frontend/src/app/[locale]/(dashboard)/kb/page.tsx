@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Database } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { KBList, CreateKBDialog } from "@/components/kb";
+import { Database, Plus } from "lucide-react";
+
+import { CreateKBDialog, KBList } from "@/components/kb";
+import { EmptyState, LoadingState } from "@/components/states";
 import { useKnowledgeBases } from "@/hooks";
 
 export default function KBPage() {
@@ -16,29 +16,39 @@ export default function KBPage() {
   }, [fetchKBs]);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto w-full max-w-5xl space-y-8">
+      <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold">
-            <Database className="h-6 w-6" />
-            Knowledge Bases
+          <p className="text-foreground/55 font-mono text-[11px] uppercase tracking-wider">
+            Knowledge bases
+          </p>
+          <h1 className="font-display text-foreground mt-1 text-3xl font-bold tracking-tight sm:text-4xl">
+            Documents your assistant can use
           </h1>
-          <p className="text-muted-foreground text-sm">
-            Manage your document collections used for AI retrieval.
+          <p className="text-foreground/65 mt-1 max-w-xl text-sm">
+            Group related collections into a knowledge base, toggle which ones the agent should
+            search.
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
+        <button
+          type="button"
+          onClick={() => setCreateOpen(true)}
+          className="bg-foreground text-background hover:bg-foreground/90 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors"
+        >
+          <Plus className="h-4 w-4" />
           New knowledge base
-        </Button>
-      </div>
+        </button>
+      </header>
 
       {isLoading ? (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-28 w-full" />
-          ))}
-        </div>
+        <LoadingState variant="skeleton-list" rows={4} />
+      ) : kbs.length === 0 ? (
+        <EmptyState
+          icon={Database}
+          title="No knowledge bases yet"
+          description="Create one to give your assistant access to documents from collections."
+          cta={{ label: "Create knowledge base", onClick: () => setCreateOpen(true) }}
+        />
       ) : (
         <KBList
           kbs={kbs}
@@ -47,7 +57,11 @@ export default function KBPage() {
         />
       )}
 
-      <CreateKBDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={() => fetchKBs()} />
+      <CreateKBDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={() => fetchKBs()}
+      />
     </div>
   );
 }

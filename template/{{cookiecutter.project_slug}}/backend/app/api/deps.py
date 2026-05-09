@@ -735,6 +735,14 @@ ActiveOrg = Annotated[Organization, Depends(get_active_organization)]
 
 # === RBAC helpers for org-level role checks ===
 
+{%- if cookiecutter.enable_teams %}
+# Module-level alias so tests can patch via `app.api.deps._member_repo`.
+# RequireOrgRole methods reference this alias instead of importing the repo
+# inline; routes using member_repo continue to import via the canonical path.
+from app.repositories import member_repo as _member_repo  # noqa: E402,F401
+{%- endif %}
+
+
 class RequireOrgRole:
     """Dependency that verifies the requester has one of the allowed roles in the active org.
 
@@ -750,7 +758,6 @@ class RequireOrgRole:
 {%- if cookiecutter.use_postgresql %}
 
     async def __call__(self, org: ActiveOrg, user: CurrentUser, db: DBSession) -> Organization:
-        from app.repositories import member_repo as _member_repo
         membership = await _member_repo.get(db, organization_id=org.id, user_id=user.id)
         if not membership or membership.role not in self.allowed_roles:
             raise AuthorizationError(
@@ -762,7 +769,6 @@ class RequireOrgRole:
 {%- elif cookiecutter.use_sqlite %}
 
     def __call__(self, org: ActiveOrg, user: CurrentUser, db: DBSession) -> Organization:
-        from app.repositories import member_repo as _member_repo
         membership = _member_repo.get(db, organization_id=org.id, user_id=str(user.id))
         if not membership or membership.role not in self.allowed_roles:
             raise AuthorizationError(
@@ -789,8 +795,12 @@ class RequireOrgRole:
 RequireOwner = Annotated[Organization, Depends(RequireOrgRole(OrgRole.OWNER.value))]
 RequireAdminPlus = Annotated[Organization, Depends(RequireOrgRole(OrgRole.OWNER.value, OrgRole.ADMIN.value))]
 RequireMemberPlus = Annotated[Organization, Depends(RequireOrgRole(OrgRole.OWNER.value, OrgRole.ADMIN.value, OrgRole.MEMBER.value))]
+{%- endif %}
 
 
+# is_app_admin is a global flag on the User model — independent of team
+# membership. Routes guarded by this dep (e.g. /admin/users) stay reachable
+# even when teams are disabled, so the dep itself must not be gated.
 async def _require_app_admin(user: CurrentUser) -> "User":  # type: ignore[name-defined]
     """Raises 403 unless the user has the is_app_admin flag set."""
     if not getattr(user, "is_app_admin", False):
@@ -799,8 +809,6 @@ async def _require_app_admin(user: CurrentUser) -> "User":  # type: ignore[name-
 
 
 CurrentAppAdmin = Annotated["User", Depends(_require_app_admin)]  # type: ignore[valid-type]
-
-{%- endif %}
 
 
 # WebSocket authentication dependency
@@ -1054,4 +1062,37 @@ def get_newsletter_service() -> NewsletterService:
 
 
 NewsletterSvc = Annotated[NewsletterService, Depends(get_newsletter_service)]
+{%- endif %}
+{%- if cookiecutter.enable_marketing_site %}
+from app.services.contact import ContactService
+
+
+def get_contact_service() -> ContactService:
+    """Create ContactService instance."""
+    return ContactService()
+
+
+ContactSvc = Annotated[ContactService, Depends(get_contact_service)]
+{%- endif %}
+{%- if cookiecutter.use_auth %}
+from app.services.api_key import ApiKeyService
+
+
+def get_api_key_service(db: DBSession) -> ApiKeyService:
+    """Create ApiKeyService instance."""
+    return ApiKeyService(db)
+
+
+ApiKeySvc = Annotated[ApiKeyService, Depends(get_api_key_service)]
+{%- endif %}
+{%- if cookiecutter.enable_admin_panel %}
+from app.services.admin import AdminService
+
+
+def get_admin_service(db: DBSession) -> AdminService:
+    """Create AdminService instance."""
+    return AdminService(db)
+
+
+AdminSvc = Annotated[AdminService, Depends(get_admin_service)]
 {%- endif %}

@@ -1,18 +1,9 @@
-{%- if cookiecutter.use_jwt %}
-"use client";
-{% raw %}
+{% raw %}"use client";
+
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Download, ExternalLink, ThumbsUp, ThumbsDown } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-} from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -92,7 +83,7 @@ export default function AdminRatingsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Response Ratings</h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Message quality feedback from users over the last 30 days.
           </p>
         </div>
@@ -131,7 +122,7 @@ export default function AdminRatingsPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Likes</CardDescription>
-              <CardTitle className="flex items-center gap-2 text-3xl tabular-nums text-green-600">
+              <CardTitle className="flex items-center gap-2 text-3xl text-green-600 tabular-nums">
                 <ThumbsUp className="h-5 w-5" />
                 {summary.like_count}
               </CardTitle>
@@ -140,7 +131,7 @@ export default function AdminRatingsPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Dislikes</CardDescription>
-              <CardTitle className="flex items-center gap-2 text-3xl tabular-nums text-destructive">
+              <CardTitle className="text-destructive flex items-center gap-2 text-3xl tabular-nums">
                 <ThumbsDown className="h-5 w-5" />
                 {summary.dislike_count}
               </CardTitle>
@@ -166,7 +157,10 @@ export default function AdminRatingsPage() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={summary.ratings_by_day} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
+              <BarChart
+                data={summary.ratings_by_day}
+                margin={{ top: 4, right: 4, bottom: 4, left: 0 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} className="fill-muted-foreground" />
                 <YAxis tick={{ fontSize: 11 }} className="fill-muted-foreground" />
@@ -178,7 +172,12 @@ export default function AdminRatingsPage() {
                   }}
                 />
                 <Bar dataKey="likes" fill="#22c55e" name="Likes" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="dislikes" fill="hsl(var(--destructive))" name="Dislikes" radius={[4, 4, 0, 0]} />
+                <Bar
+                  dataKey="dislikes"
+                  fill="hsl(var(--destructive))"
+                  name="Dislikes"
+                  radius={[4, 4, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -187,7 +186,13 @@ export default function AdminRatingsPage() {
 
       {/* Filters */}
       <div className="flex items-center gap-4">
-        <Select value={filter} onValueChange={(v) => { setFilter(v as RatingFilter); setPage(0); }}>
+        <Select
+          value={filter}
+          onValueChange={(v) => {
+            setFilter(v as RatingFilter);
+            setPage(0);
+          }}
+        >
           <SelectTrigger className="w-40">
             <SelectValue />
           </SelectTrigger>
@@ -200,7 +205,10 @@ export default function AdminRatingsPage() {
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={commentsOnly}
-            onCheckedChange={(v) => { setCommentsOnly(!!v); setPage(0); }}
+            onCheckedChange={(v) => {
+              setCommentsOnly(!!v);
+              setPage(0);
+            }}
           />
           With comments only
         </label>
@@ -230,7 +238,7 @@ export default function AdminRatingsPage() {
                 ))
               : ratings?.items.map((rating) => (
                   <TableRow key={rating.id}>
-                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                    <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
                       {new Date(rating.created_at).toLocaleDateString()}
                     </TableCell>
                     <TableCell>
@@ -249,7 +257,7 @@ export default function AdminRatingsPage() {
                     <TableCell className="max-w-xs truncate text-sm">
                       {rating.comment || <span className="text-muted-foreground">—</span>}
                     </TableCell>
-                    <TableCell className="max-w-xs truncate text-sm text-muted-foreground">
+                    <TableCell className="text-muted-foreground max-w-xs truncate text-sm">
                       {rating.message_content || "—"}
                     </TableCell>
                     <TableCell className="text-sm">
@@ -269,7 +277,7 @@ export default function AdminRatingsPage() {
                 ))}
             {!loading && ratings?.items.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="text-muted-foreground py-8 text-center">
                   No ratings found.
                 </TableCell>
               </TableRow>
@@ -280,7 +288,7 @@ export default function AdminRatingsPage() {
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">
+          <span className="text-muted-foreground text-sm">
             Page {page + 1} of {totalPages} &middot; {ratings?.total} total
           </span>
           <div className="flex gap-2">
@@ -307,8 +315,3 @@ export default function AdminRatingsPage() {
   );
 }
 {% endraw %}
-{%- else %}
-export default function AdminRatingsPage() {
-  return null;
-}
-{%- endif %}

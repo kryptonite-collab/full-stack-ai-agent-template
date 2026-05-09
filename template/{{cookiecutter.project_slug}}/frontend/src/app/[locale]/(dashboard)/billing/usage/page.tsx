@@ -1,6 +1,5 @@
-{%- if cookiecutter.enable_billing and cookiecutter.enable_credits_system and cookiecutter.enable_teams %}
-"use client";
-{% raw %}
+{% raw %}"use client";
+
 import { useEffect, useState, useCallback } from "react";
 import {
   BarChart,
@@ -87,7 +86,7 @@ export default function UsageDashboardPage() {
   const handleExport = async () => {
     try {
       const txData = await apiClient.get<{ items: CreditTransaction[] }>(
-        "/billing/me/credits/transactions?skip=0&limit=1000"
+        "/billing/me/credits/transactions?skip=0&limit=1000",
       );
       const csv = [
         "Date,Type,Delta,Balance After,Description",
@@ -98,7 +97,7 @@ export default function UsageDashboardPage() {
             t.delta,
             t.balance_after,
             `"${(t.description ?? "").replace(/"/g, '""')}"`,
-          ].join(",")
+          ].join(","),
         ),
       ].join("\n");
       const blob = new Blob([csv], { type: "text/csv" });
@@ -123,7 +122,7 @@ export default function UsageDashboardPage() {
 
   const timelineChartData =
     timeline?.buckets.map((b) => ({
-      day: b.day.slice(5),  // "MM-DD"
+      day: b.day.slice(5), // "MM-DD"
       credits: b.credits_charged,
       calls: b.total_calls,
     })) ?? [];
@@ -133,7 +132,7 @@ export default function UsageDashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Usage Dashboard</h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Token consumption and credit usage across your organization.
           </p>
         </div>
@@ -227,11 +226,7 @@ export default function UsageDashboardPage() {
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={byModelChartData} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 12 }}
-                  className="fill-muted-foreground"
-                />
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} className="fill-muted-foreground" />
                 <YAxis tick={{ fontSize: 12 }} className="fill-muted-foreground" />
                 <Tooltip
                   contentStyle={{
@@ -258,11 +253,13 @@ export default function UsageDashboardPage() {
                 <div key={m.model} className="grid grid-cols-4 gap-4 py-3 text-sm">
                   <div className="col-span-2">
                     <p className="font-medium">{m.model}</p>
-                    <p className="text-xs text-muted-foreground">{m.provider}</p>
+                    <p className="text-muted-foreground text-xs">{m.provider}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Tokens</p>
-                    <p className="font-mono">{(m.input_tokens + m.output_tokens).toLocaleString()}</p>
+                    <p className="font-mono">
+                      {(m.input_tokens + m.output_tokens).toLocaleString()}
+                    </p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Credits</p>
@@ -278,8 +275,3 @@ export default function UsageDashboardPage() {
   );
 }
 {% endraw %}
-{%- else %}
-export default function UsageDashboardPage() {
-  return null;
-}
-{%- endif %}

@@ -31,7 +31,7 @@ def upgrade() -> None:
         UPDATE conversations
         SET organization_id = o.id
         FROM organizations o
-        WHERE conversations.user_id = o.owner_id
+        WHERE conversations.user_id = o.created_by_user_id
           AND o.is_personal = TRUE
           AND conversations.organization_id IS NULL
     """))

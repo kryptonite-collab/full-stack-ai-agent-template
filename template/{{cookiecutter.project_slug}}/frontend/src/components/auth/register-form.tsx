@@ -1,18 +1,17 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
+import { ArrowRight, Check, X } from "lucide-react";
+
+import { OAuthButtons, OAuthDivider } from "@/components/auth/oauth-buttons";
+import { Button, Input, Label } from "@/components/ui";
 import { useAuth } from "@/hooks";
-import { Button, Input, Label, Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui";
 import { ApiError } from "@/lib/api-client";
 import { ROUTES } from "@/lib/constants";
-{%- if cookiecutter.enable_oauth_google %}
-import { GoogleIcon } from "@/components/icons/google-icon";
-{%- endif %}
-import { Check, X } from "lucide-react";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -25,10 +24,10 @@ function getPasswordStrength(pw: string): { score: number; label: string; color:
   if (/\d/.test(pw)) score++;
   if (/[^a-zA-Z0-9]/.test(pw)) score++;
 
-  if (score <= 1) return { score: 1, label: "Weak", color: "bg-red-500" };
+  if (score <= 1) return { score: 1, label: "Weak", color: "bg-destructive" };
   if (score <= 2) return { score: 2, label: "Fair", color: "bg-orange-500" };
   if (score <= 3) return { score: 3, label: "Good", color: "bg-yellow-500" };
-  return { score: 4, label: "Strong", color: "bg-green-500" };
+  return { score: 4, label: "Strong", color: "bg-brand" };
 }
 
 export function RegisterForm() {
@@ -41,9 +40,6 @@ export function RegisterForm() {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-{%- if cookiecutter.enable_oauth_google %}
-  const [isOAuthLoading, setIsOAuthLoading] = useState(false);
-{%- endif %}
   const [emailTouched, setEmailTouched] = useState(false);
 
   const emailValid = !email || EMAIL_RE.test(email);
@@ -59,12 +55,10 @@ export function RegisterForm() {
       setError("Please enter a valid email address");
       return;
     }
-
     if (password.length < 8) {
       setError("Password must be at least 8 characters");
       return;
     }
-
     if (password !== confirmPassword) {
       setError("Passwords do not match");
       toast.error("Passwords do not match");
@@ -72,13 +66,13 @@ export function RegisterForm() {
     }
 
     setIsLoading(true);
-
     try {
       await register({ email, password, name: name || undefined });
       toast.success(t("registerSuccess"));
       router.push(ROUTES.LOGIN + "?registered=true");
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Registration failed. Please try again.";
+      const message =
+        err instanceof ApiError ? err.message : "Registration failed. Please try again.";
       setError(message);
       toast.error(message);
     } finally {
@@ -86,141 +80,168 @@ export function RegisterForm() {
     }
   };
 
-{%- if cookiecutter.enable_oauth_google %}
-
-  const handleGoogleSignUp = () => {
-    setIsOAuthLoading(true);
-    // Redirect to backend OAuth endpoint
-    window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/oauth/google/login`;
-  };
-{%- endif %}
-
   return (
-    <Card className="w-full max-w-md mx-auto">
-      <CardHeader>
-        <CardTitle className="text-2xl text-center">{t("createAccount")}</CardTitle>
-      </CardHeader>
-      <CardContent>
-{%- if cookiecutter.enable_oauth_google %}
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full mb-6"
-          onClick={handleGoogleSignUp}
-          disabled={isOAuthLoading || isLoading}
-        >
-          <GoogleIcon className="mr-2 h-4 w-4" />
-          {isOAuthLoading ? t("redirecting") : t("signUpWithGoogle")}
-        </Button>
-
-        <div className="relative mb-6">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-card px-2 text-muted-foreground">{t("orRegisterWith")}</span>
-          </div>
-        </div>
-{%- endif %}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">{t("nameOptional")}</Label>
-            <Input
-              id="name"
-              type="text"
-              placeholder="John Doe"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={isLoading}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="email">{t("email")}</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onBlur={() => setEmailTouched(true)}
-              required
-              disabled={isLoading}
-              className={emailTouched && email && !emailValid ? "border-destructive" : ""}
-            />
-            {emailTouched && email && !emailValid && (
-              <p className="text-destructive text-xs">{t("emailRequired")}</p>
-            )}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">{t("password")}</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              disabled={isLoading}
-              className={password && !passwordLongEnough ? "border-destructive" : ""}
-            />
-            {password && (
-              <div className="space-y-1.5">
-                <div className="flex gap-1">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div
-                      key={i}
-                      className={`h-1 flex-1 rounded-full transition-colors ${
-                        i <= strength.score ? strength.color : "bg-muted"
-                      }`}
-                    />
-                  ))}
-                </div>
-                <div className="flex items-center justify-between">
-                  <p className="text-muted-foreground text-xs">{strength.label}</p>
-                  <div className="flex items-center gap-1.5 text-xs">
-                    {password.length >= 8 ? (
-                      <span className="flex items-center gap-0.5 text-green-500"><Check className="h-3 w-3" />8+ chars</span>
-                    ) : (
-                      <span className="flex items-center gap-0.5 text-muted-foreground"><X className="h-3 w-3" />8+ chars</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="confirmPassword">{t("confirmPassword")}</Label>
-            <Input
-              id="confirmPassword"
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-              disabled={isLoading}
-              className={confirmPassword && !passwordsMatch ? "border-destructive" : ""}
-            />
-            {confirmPassword && (
-              <p className={`flex items-center gap-1 text-xs ${passwordsMatch ? "text-green-500" : "text-destructive"}`}>
-                {passwordsMatch ? <><Check className="h-3 w-3" />{t("confirmPassword")} ✓</> : <><X className="h-3 w-3" />{t("passwordMismatch")}</>}
-              </p>
-            )}
-          </div>
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
-          )}
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? t("creatingAccount") : t("register")}
-          </Button>
-        </form>
-      </CardContent>
-      <CardFooter className="justify-center">
-        <p className="text-sm text-muted-foreground">
+    <div className="space-y-7">
+      <div className="space-y-2">
+        <span className="eyebrow text-foreground/55">Get started</span>
+        <h1 className="text-display-md text-foreground">{t("createAccount")}</h1>
+        <p className="text-foreground/65 text-sm">
           {t("hasAccount")}{" "}
-          <Link href={ROUTES.LOGIN} className="text-primary hover:underline">
+          <Link href={ROUTES.LOGIN} className="text-foreground hover:text-foreground/80 font-medium underline-offset-4 hover:underline">
             {t("login")}
           </Link>
         </p>
-      </CardFooter>
-    </Card>
+      </div>
+
+      <OAuthButtons variant="signup" />
+      <OAuthDividerIfProviders />
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="name" className="text-foreground/80 text-xs font-medium uppercase tracking-wider">
+            {t("nameOptional")}
+          </Label>
+          <Input
+            id="name"
+            type="text"
+            placeholder="Maya Chen"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={isLoading}
+            autoComplete="name"
+            className="h-11 rounded-xl"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="email" className="text-foreground/80 text-xs font-medium uppercase tracking-wider">
+            {t("email")}
+          </Label>
+          <Input
+            id="email"
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onBlur={() => setEmailTouched(true)}
+            required
+            disabled={isLoading}
+            autoComplete="email"
+            className={`h-11 rounded-xl ${emailTouched && email && !emailValid ? "border-destructive" : ""}`}
+          />
+          {emailTouched && email && !emailValid && (
+            <p className="text-destructive text-xs">{t("emailRequired")}</p>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="password" className="text-foreground/80 text-xs font-medium uppercase tracking-wider">
+            {t("password")}
+          </Label>
+          <Input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            disabled={isLoading}
+            autoComplete="new-password"
+            className={`h-11 rounded-xl ${password && !passwordLongEnough ? "border-destructive" : ""}`}
+          />
+          {password && (
+            <div className="space-y-1.5 pt-1">
+              <div className="flex gap-1">
+                {[1, 2, 3, 4].map((i) => (
+                  <div
+                    key={i}
+                    className={`h-1 flex-1 rounded-full transition-colors ${
+                      i <= strength.score ? strength.color : "bg-foreground/10"
+                    }`}
+                  />
+                ))}
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-foreground/55 font-mono text-[11px] uppercase tracking-wider">
+                  {strength.label}
+                </p>
+                <div className="flex items-center gap-1.5 text-xs">
+                  {password.length >= 8 ? (
+                    <span className="text-brand inline-flex items-center gap-1">
+                      <Check className="h-3 w-3" />
+                      8+ chars
+                    </span>
+                  ) : (
+                    <span className="text-foreground/55 inline-flex items-center gap-1">
+                      <X className="h-3 w-3" />
+                      8+ chars
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="confirmPassword" className="text-foreground/80 text-xs font-medium uppercase tracking-wider">
+            {t("confirmPassword")}
+          </Label>
+          <Input
+            id="confirmPassword"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            disabled={isLoading}
+            autoComplete="new-password"
+            className={`h-11 rounded-xl ${confirmPassword && !passwordsMatch ? "border-destructive" : ""}`}
+          />
+          {confirmPassword && !passwordsMatch && (
+            <p className="text-destructive inline-flex items-center gap-1 text-xs">
+              <X className="h-3 w-3" />
+              {t("passwordMismatch")}
+            </p>
+          )}
+        </div>
+
+        {error && (
+          <p className="border-destructive/30 bg-destructive/5 text-destructive rounded-lg border px-3 py-2 text-sm">
+            {error}
+          </p>
+        )}
+
+        <Button
+          type="submit"
+          disabled={isLoading}
+          className="h-11 w-full rounded-full bg-foreground text-background hover:bg-foreground/90"
+        >
+          {isLoading ? (
+            t("creatingAccount")
+          ) : (
+            <>
+              {t("register")}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </>
+          )}
+        </Button>
+
+        <p className="text-foreground/50 text-center text-xs">
+          By creating an account, you agree to our{" "}
+          <Link href="/legal/terms" className="text-foreground/70 hover:text-foreground underline-offset-4 hover:underline">
+            Terms
+          </Link>{" "}
+          and{" "}
+          <Link href="/legal/privacy" className="text-foreground/70 hover:text-foreground underline-offset-4 hover:underline">
+            Privacy Policy
+          </Link>
+          .
+        </p>
+      </form>
+    </div>
   );
+}
+
+function OAuthDividerIfProviders() {
+  if (!process.env.NEXT_PUBLIC_OAUTH_PROVIDERS) return null;
+  return <OAuthDivider />;
 }

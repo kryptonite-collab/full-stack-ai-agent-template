@@ -2,7 +2,7 @@
 """create materialized view mv_usage_daily
 
 Revision ID: 0015_create_mv_usage_daily
-Revises: 0014_create_credit_transaction_usage_event
+Revises: 0014_credits_usage_events
 Create Date: {{ cookiecutter.generated_at }}
 
 Creates a daily-bucketed materialized view for fast usage aggregation queries.
@@ -12,7 +12,7 @@ The UNIQUE index on (organization_id, day) allows REFRESH CONCURRENTLY.
 from alembic import op
 
 revision = "0015_create_mv_usage_daily"
-down_revision = "0014_create_credit_transaction_usage_event"
+down_revision = "0014_credits_usage_events"
 branch_labels = None
 depends_on = None
 
@@ -44,11 +44,11 @@ def downgrade() -> None:
 """create mv_usage_daily — skipped (PostgreSQL + billing + credits not all enabled)
 
 Revision ID: 0015_create_mv_usage_daily
-Revises: 0014_create_credit_transaction_usage_event
+Revises: 0014_credits_usage_events
 """
 
 revision = "0015_create_mv_usage_daily"
-down_revision = "0014_create_credit_transaction_usage_event"
+down_revision = "0014_credits_usage_events"
 branch_labels = None
 depends_on = None
 

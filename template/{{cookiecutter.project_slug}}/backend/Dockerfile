@@ -32,6 +32,17 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
 
+{%- if cookiecutter.use_liteparse or cookiecutter.use_all_pdf_parsers %}
+# LiteParse needs the Node.js CLI. Pre-installing here avoids a 30-60s
+# blocking npm install on the first parse request from a fresh container.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g @llamaindex/liteparse \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+{%- endif %}
+
 # Copy virtual environment from builder
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app /app

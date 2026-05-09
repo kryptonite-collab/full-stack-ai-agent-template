@@ -48,6 +48,12 @@ def get_session_service(db: DBSession) -> SessionService:
 UserSvc = Annotated[UserService, Depends(get_user_service)]
 SessionSvc = Annotated[SessionService, Depends(get_session_service)]
 
+# Module-level alias for tests that patch via `app.api.deps._member_repo`.
+# The actual import lives close to where it's used (RequireOrgRole) for
+# Jinja-conditional cleanliness when teams are disabled, but tests rely on
+# this attribute being patchable at the module level.
+from app.repositories import member_repo as _member_repo  # noqa: E402
+
 
 def get_conversation_service(db: DBSession) -> ConversationService:
     """Create ConversationService instance with database session."""
@@ -323,8 +329,6 @@ class RequireOrgRole:
         self.allowed_roles = set(allowed_roles)
 
     async def __call__(self, org: ActiveOrg, user: CurrentUser, db: DBSession) -> Organization:
-        from app.repositories import member_repo as _member_repo
-
         membership = await _member_repo.get(db, organization_id=org.id, user_id=user.id)
         if not membership or membership.role not in self.allowed_roles:
             raise AuthorizationError(
@@ -538,3 +542,33 @@ def get_newsletter_service() -> NewsletterService:
 
 
 NewsletterSvc = Annotated[NewsletterService, Depends(get_newsletter_service)]
+
+from app.services.contact import ContactService
+
+
+def get_contact_service() -> ContactService:
+    """Create ContactService instance."""
+    return ContactService()
+
+
+ContactSvc = Annotated[ContactService, Depends(get_contact_service)]
+
+from app.services.api_key import ApiKeyService
+
+
+def get_api_key_service(db: DBSession) -> ApiKeyService:
+    """Create ApiKeyService instance."""
+    return ApiKeyService(db)
+
+
+ApiKeySvc = Annotated[ApiKeyService, Depends(get_api_key_service)]
+
+from app.services.admin import AdminService
+
+
+def get_admin_service(db: DBSession) -> AdminService:
+    """Create AdminService instance."""
+    return AdminService(db)
+
+
+AdminSvc = Annotated[AdminService, Depends(get_admin_service)]

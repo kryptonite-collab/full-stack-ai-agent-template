@@ -1,4 +1,4 @@
-"use client";
+{% raw %}"use client";
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -14,26 +14,21 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       rehypePlugins={[rehypeHighlight]}
-      components={% raw %}{{{% endraw %}
+      components={{
         pre({ children, ...props }) {
           const codeElement = children as React.ReactElement<{
             children?: string;
           }>;
           const codeContent =
-            typeof codeElement?.props?.children === "string"
-              ? codeElement.props.children
-              : "";
+            typeof codeElement?.props?.children === "string" ? codeElement.props.children : "";
 
           return (
             <div className="group relative">
-              <pre
-                className="overflow-x-auto rounded-lg bg-muted/50 p-3 text-xs"
-                {...props}
-              >
+              <pre className="bg-muted/50 overflow-x-auto rounded-lg p-3 text-xs" {...props}>
                 {children}
               </pre>
               {codeContent && (
-                <div className="absolute right-2 top-2">
+                <div className="absolute top-2 right-2">
                   <CopyButton text={codeContent} className="opacity-100" />
                 </div>
               )}
@@ -44,10 +39,7 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
           const isInline = !className;
           if (isInline) {
             return (
-              <code
-                className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono"
-                {...props}
-              >
+              <code className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs" {...props}>
                 {children}
               </code>
             );
@@ -64,7 +56,7 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-primary underline hover:text-primary/80"
+              className="text-primary hover:text-primary/80 underline"
               {...props}
             >
               {children}
@@ -123,7 +115,7 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
         blockquote({ children, ...props }) {
           return (
             <blockquote
-              className="mb-2 border-l-2 border-muted-foreground/50 pl-3 italic"
+              className="border-muted-foreground/50 mb-2 border-l-2 pl-3 italic"
               {...props}
             >
               {children}
@@ -141,27 +133,25 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
         },
         th({ children, ...props }) {
           return (
-            <th
-              className="border-b border-muted px-2 py-1 text-left font-semibold"
-              {...props}
-            >
+            <th className="border-muted border-b px-2 py-1 text-left font-semibold" {...props}>
               {children}
             </th>
           );
         },
         td({ children, ...props }) {
           return (
-            <td className="border-b border-muted/50 px-2 py-1" {...props}>
+            <td className="border-muted/50 border-b px-2 py-1" {...props}>
               {children}
             </td>
           );
         },
         hr({ ...props }) {
-          return <hr className="my-3 border-muted" {...props} />;
+          return <hr className="border-muted my-3" {...props} />;
         },
-      {% raw %}}}{% endraw %}
+      }}
     >
       {content}
     </ReactMarkdown>
   );
 }
+{% endraw %}

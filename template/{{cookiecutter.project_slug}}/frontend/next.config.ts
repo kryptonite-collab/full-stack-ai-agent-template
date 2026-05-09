@@ -1,7 +1,16 @@
+{%- if cookiecutter.enable_marketing_site %}
+import createMDX from "@next/mdx";
+{%- endif %}
 import type { NextConfig } from "next";
-import createNextIntlPlugin from 'next-intl/plugin';
+import createNextIntlPlugin from "next-intl/plugin";
 
-const withNextIntl = createNextIntlPlugin('./src/i18n.ts');
+const withNextIntl = createNextIntlPlugin("./src/i18n.ts");
+{%- if cookiecutter.enable_marketing_site %}
+const withMDX = createMDX({
+  // No extra remark/rehype plugins for now — keep build simple.
+  // next-mdx-remote/rsc handles the actual blog post compilation.
+});
+{%- endif %}
 
 // Content Security Policy directives
 const ContentSecurityPolicy = `
@@ -14,7 +23,9 @@ const ContentSecurityPolicy = `
   frame-ancestors 'none';
   base-uri 'self';
   form-action 'self';
-`.replace(/\n/g, " ").trim();
+`
+  .replace(/\n/g, " ")
+  .trim();
 
 const securityHeaders = [
   {
@@ -45,6 +56,9 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+{%- if cookiecutter.enable_marketing_site %}
+  pageExtensions: ["ts", "tsx", "mdx"],
+{%- endif %}
 
   // Security headers
   async headers() {
@@ -67,4 +81,8 @@ const nextConfig: NextConfig = {
   },
 };
 
+{%- if cookiecutter.enable_marketing_site %}
+export default withNextIntl(withMDX(nextConfig));
+{%- else %}
 export default withNextIntl(nextConfig);
+{%- endif %}

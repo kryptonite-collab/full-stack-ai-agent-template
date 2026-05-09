@@ -32,6 +32,79 @@ from .config import (
 console = Console()
 
 
+# Sentinel returned by section prompt functions when the user picked "← Back".
+# The wizard driver in run_interactive_prompts() catches this and re-runs the
+# previous section. Sections themselves remain pure functions returning either
+# a result dict / value, or BACK.
+class _BackSentinel:
+    def __repr__(self) -> str:  # pragma: no cover - cosmetic
+        return "BACK"
+
+
+BACK = _BackSentinel()
+
+# Label used as the first choice in select/checkbox prompts when the user is
+# allowed to step back. Kept consistent so users see the same affordance.
+BACK_LABEL = "← Back"
+
+
+def _back_choice() -> "questionary.Choice":
+    """Return a questionary Choice that signals 'go back' when picked."""
+    return questionary.Choice(BACK_LABEL, value=BACK)
+
+
+def _select_with_back(
+    message: str,
+    choices: list,
+    *,
+    default: Any = None,
+    allow_back: bool = True,
+) -> Any:
+    """questionary.select wrapper that injects '← Back' on top.
+
+    Returns BACK sentinel when user picks back, otherwise the chosen value.
+    Cancellation (None / Ctrl+C) is converted to KeyboardInterrupt as before.
+    """
+    full_choices = ([_back_choice()] if allow_back else []) + list(choices)
+    answer = questionary.select(message, choices=full_choices, default=default).ask()
+    if answer is None:
+        raise KeyboardInterrupt
+    return answer
+
+
+def _confirm_with_back(message: str, *, default: bool = False, allow_back: bool = True) -> Any:
+    """confirm() equivalent that also supports '← Back'.
+
+    Implemented as a select with Yes/No/Back so the user has one consistent UX
+    across the wizard.
+    """
+    yes = questionary.Choice("Yes", value=True)
+    no = questionary.Choice("No", value=False)
+    options = [yes, no]
+    if allow_back:
+        options.append(_back_choice())
+    answer = questionary.select(
+        message,
+        choices=options,
+        default=yes if default else no,
+    ).ask()
+    if answer is None:
+        raise KeyboardInterrupt
+    return answer
+
+
+def _section_gate(section_name: str, *, can_go_back: bool) -> bool:
+    """Pre-section gate — currently a no-op pass-through.
+
+    Originally prompted "Continue / ← Back" before each section but it added
+    one extra keystroke per section (~25 sections × Enter), which was friction
+    most users didn't want. Kept as a function (not removed) so the driver in
+    ``run_interactive_prompts`` can re-enable section-level back navigation
+    later via a single line change here.
+    """
+    return True
+
+
 def show_header() -> None:
     """Display the generator header."""
     header = Text()
@@ -206,26 +279,36 @@ def prompt_oauth() -> OAuthProvider:
             questionary.select(
                 "Enable social login?",
                 choices=choices,
-                default=choices[0],
+                default=choices[1],
             ).ask()
         ),
     )
 
 
-def prompt_logfire(background_tasks: BackgroundTaskType) -> tuple[bool, LogfireFeatures]:
+def prompt_logfire(
+    background_tasks: BackgroundTaskType,
+    ai_framework: AIFrameworkType,
+) -> tuple[bool, LogfireFeatures]:
     """Prompt for Logfire configuration.
 
     Args:
         background_tasks: Selected background task system (affects which options are shown).
+        ai_framework: Selected AI framework — PydanticAI / PydanticDeep default to
+            Logfire-on (it's their first-class observability story); other frameworks
+            default to off but the user can still flip it.
     """
     console.print()
     console.print("[bold cyan]Observability (Logfire)[/]")
     console.print()
 
+    logfire_default = ai_framework in (
+        AIFrameworkType.PYDANTIC_AI,
+        AIFrameworkType.PYDANTIC_DEEP,
+    )
     enable_logfire = _check_cancelled(
         questionary.confirm(
             "Enable Logfire integration?",
-            default=True,
+            default=logfire_default,
         ).ask()
     )
 
@@ -494,6 +577,9 @@ def prompt_reverse_proxy() -> ReverseProxyType:
 
     choices = [
         questionary.Choice(
+            "Nginx (external, config template only)", value=ReverseProxyType.NGINX_EXTERNAL
+        ),
+        questionary.Choice(
             "Traefik (included in docker-compose)", value=ReverseProxyType.TRAEFIK_INCLUDED
         ),
         questionary.Choice(
@@ -502,9 +588,6 @@ def prompt_reverse_proxy() -> ReverseProxyType:
         ),
         questionary.Choice(
             "Nginx (included in docker-compose)", value=ReverseProxyType.NGINX_INCLUDED
-        ),
-        questionary.Choice(
-            "Nginx (external, config template only)", value=ReverseProxyType.NGINX_EXTERNAL
         ),
         questionary.Choice(
             "None (expose ports directly, use own proxy)", value=ReverseProxyType.NONE
@@ -1063,7 +1146,7 @@ def prompt_teams_billing(database: DatabaseType) -> dict[str, Any]:
             _check_cancelled(
                 questionary.confirm(
                     "Require payment method to start trial?",
-                    default=False,
+                    default=True,
                 ).ask()
             ),
         )
@@ -1139,12 +1222,28 @@ def prompt_marketing_features() -> dict[str, bool]:
         questionary.checkbox(
             "Select public marketing pages to include:",
             choices=[
-                questionary.Choice("Marketing site (landing page, hero, pricing)", value="marketing_site"),
-                questionary.Choice("Changelog page (/changelog)", value="changelog"),
-                questionary.Choice("Testimonials section", value="testimonials"),
-                questionary.Choice("Competitor comparison pages (/vs/…)", value="comparison_pages"),
-                questionary.Choice("Affiliate / referral program pages", value="affiliate_program"),
-                questionary.Choice("Status badge (links to status page)", value="status_badge"),
+                questionary.Choice(
+                    "Marketing site (landing page, hero, pricing)",
+                    value="marketing_site",
+                    checked=True,
+                ),
+                questionary.Choice("Changelog page (/changelog)", value="changelog", checked=True),
+                questionary.Choice("Testimonials section", value="testimonials", checked=True),
+                questionary.Choice(
+                    "Competitor comparison pages (/vs/…)",
+                    value="comparison_pages",
+                    checked=True,
+                ),
+                questionary.Choice(
+                    "Affiliate / referral program pages",
+                    value="affiliate_program",
+                    checked=True,
+                ),
+                questionary.Choice(
+                    "Status badge (links to status page)",
+                    value="status_badge",
+                    checked=True,
+                ),
             ],
         ).ask()
     )
@@ -1160,120 +1259,245 @@ def prompt_marketing_features() -> dict[str, bool]:
 
 
 def run_interactive_prompts() -> ProjectConfig:
-    """Run all interactive prompts and return configuration."""
+    """Run all interactive prompts and return configuration.
+
+    Implemented as a step-based state machine with per-section back navigation.
+    Each step is a (name, runner) tuple; the runner reads from and writes to a
+    shared `state` dict. Before each step (except the first), a single-key gate
+    asks the user whether to continue or jump back to the prior section. The
+    state for that section is replayed cleanly on back, so re-running a section
+    yields the same UX as the first time.
+    """
     show_header()
 
-    # Basic info
-    basic_info = prompt_basic_info()
+    state: dict[str, Any] = {
+        "rate_limit_requests": 100,
+        "rate_limit_period": 60,
+        "rate_limit_storage": RateLimitStorageType.MEMORY,
+        "enable_langsmith": False,
+        "enable_web_search": False,
+        "enable_web_fetch": False,
+        "rag_features": RAGFeatures(),
+        "orm_type": OrmType.SQLALCHEMY,
+        "sandbox_backend": "state",
+        "reverse_proxy": ReverseProxyType.NONE,
+        "brand_color": BrandColorType.BLUE,
+        "marketing_features": {},
+    }
 
-    # Database
-    database = prompt_database()
+    # Each step is a callable taking state -> mutating it in-place. We store
+    # one snapshot per step so back navigation can roll back the merges that
+    # this step contributed.
 
-    # ORM type (only for PostgreSQL or SQLite)
-    orm_type = OrmType.SQLALCHEMY
-    if database in (DatabaseType.POSTGRESQL, DatabaseType.SQLITE):
-        orm_type = prompt_orm_type()
+    def step_basic_info() -> None:
+        info = prompt_basic_info()
+        state.update(info)
 
-    # OAuth
-    oauth_provider = prompt_oauth()
+    def step_database() -> None:
+        state["database"] = prompt_database()
 
-    # Session management
-    enable_session_management = _check_cancelled(
-        questionary.confirm(
-            "Enable session management? (track active sessions, logout from devices)",
-            default=True,
-        ).ask()
-    )
+    def step_orm_type() -> None:
+        if state["database"] in (DatabaseType.POSTGRESQL, DatabaseType.SQLITE):
+            state["orm_type"] = prompt_orm_type()
+        else:
+            state["orm_type"] = OrmType.SQLALCHEMY
 
-    # Background tasks (before Logfire so we can conditionally show Celery instrumentation)
-    background_tasks = prompt_background_tasks()
+    def step_oauth() -> None:
+        state["oauth_provider"] = prompt_oauth()
 
-    # Logfire
-    enable_logfire, logfire_features = prompt_logfire(background_tasks)
-
-    # Integrations (pass context for dynamic option filtering)
-    integrations = prompt_integrations(database=database, orm_type=orm_type)
-
-    # Dev tools
-    dev_tools = prompt_dev_tools()
-
-    # Reverse proxy (only if Docker is enabled)
-    reverse_proxy = ReverseProxyType.NONE
-    if dev_tools.get("enable_docker"):
-        reverse_proxy = prompt_reverse_proxy()
-
-    # Frontend
-    frontend = prompt_frontend()
-
-    # Python version
-    python_version = prompt_python_version()
-
-    # Port configuration
-    ports = prompt_ports(has_frontend=frontend != FrontendType.NONE)
-
-    # Auto-enable Redis for Celery/Taskiq/ARQ (they require Redis as broker)
-    if background_tasks in (
-        BackgroundTaskType.CELERY,
-        BackgroundTaskType.TASKIQ,
-        BackgroundTaskType.ARQ,
-    ):
-        integrations["enable_redis"] = True
-
-    # AI framework, LLM provider
-    enable_langsmith = False
-    enable_web_search = False
-    enable_web_fetch = False
-    rag_features = RAGFeatures()
-
-    ai_framework = prompt_ai_framework()
-
-    # Sandbox backend selection for agentic coding frameworks
-    sandbox_backend = "state"
-    if ai_framework in (AIFrameworkType.DEEPAGENTS, AIFrameworkType.PYDANTIC_DEEP):
-        sandbox_backend = prompt_sandbox_backend(ai_framework)
-
-    llm_provider = prompt_llm_provider(ai_framework)
-
-    # PydanticAI built-in capabilities (WebSearch, WebFetch)
-    if ai_framework == AIFrameworkType.PYDANTIC_AI:
-        enable_web_search, enable_web_fetch = prompt_pydantic_capabilities()
-
-    # RAG Logic
-    rag_features = prompt_rag_config()
-
-    # LangSmith for LangChain-ecosystem frameworks only
-    # (PydanticDeep uses Logfire for observability, not LangSmith)
-    if ai_framework in (
-        AIFrameworkType.LANGCHAIN,
-        AIFrameworkType.LANGGRAPH,
-        AIFrameworkType.DEEPAGENTS,
-    ):
-        enable_langsmith = prompt_langsmith()
-
-    # Messaging channel integrations
-    use_telegram, use_slack = prompt_channels()
-
-    # Teams & Billing
-    teams_billing = prompt_teams_billing(database=database)
-
-    # Email
-    enable_email, email_provider, enable_newsletter_signup = prompt_email_config()
-
-    # Rate limit configuration (when rate limiting is enabled)
-    rate_limit_requests = 100
-    rate_limit_period = 60
-    rate_limit_storage = RateLimitStorageType.MEMORY
-    if integrations.get("enable_rate_limiting"):
-        rate_limit_requests, rate_limit_period, rate_limit_storage = prompt_rate_limit_config(
-            redis_enabled=integrations.get("enable_redis", False)
+    def step_session() -> None:
+        state["enable_session_management"] = _check_cancelled(
+            questionary.confirm(
+                "Enable session management? (track active sessions, logout from devices)",
+                default=False,
+            ).ask()
         )
 
-    # Brand color (if frontend enabled)
-    brand_color = BrandColorType.BLUE
-    marketing_features: dict[str, bool] = {}
-    if frontend != FrontendType.NONE:
-        brand_color = prompt_brand_color()
-        marketing_features = prompt_marketing_features()
+    def step_background_tasks() -> None:
+        state["background_tasks"] = prompt_background_tasks()
+
+    def step_integrations() -> None:
+        state["integrations"] = prompt_integrations(
+            database=state["database"], orm_type=state["orm_type"]
+        )
+        # Auto-enable Redis for distributed task queues
+        if state["background_tasks"] in (
+            BackgroundTaskType.CELERY,
+            BackgroundTaskType.TASKIQ,
+            BackgroundTaskType.ARQ,
+        ):
+            state["integrations"]["enable_redis"] = True
+
+    def step_dev_tools() -> None:
+        state["dev_tools"] = prompt_dev_tools()
+
+    def step_reverse_proxy() -> None:
+        if state["dev_tools"].get("enable_docker"):
+            state["reverse_proxy"] = prompt_reverse_proxy()
+        else:
+            state["reverse_proxy"] = ReverseProxyType.NONE
+
+    def step_frontend() -> None:
+        state["frontend"] = prompt_frontend()
+
+    def step_python_version() -> None:
+        state["python_version"] = prompt_python_version()
+
+    def step_ports() -> None:
+        state["ports"] = prompt_ports(has_frontend=state["frontend"] != FrontendType.NONE)
+
+    def step_ai_framework() -> None:
+        state["ai_framework"] = prompt_ai_framework()
+
+    def step_logfire() -> None:
+        state["enable_logfire"], state["logfire_features"] = prompt_logfire(
+            state["background_tasks"], state["ai_framework"]
+        )
+
+    def step_sandbox_backend() -> None:
+        if state["ai_framework"] in (
+            AIFrameworkType.DEEPAGENTS,
+            AIFrameworkType.PYDANTIC_DEEP,
+        ):
+            state["sandbox_backend"] = prompt_sandbox_backend(state["ai_framework"])
+        else:
+            state["sandbox_backend"] = "state"
+
+    def step_llm_provider() -> None:
+        state["llm_provider"] = prompt_llm_provider(state["ai_framework"])
+
+    def step_pydantic_capabilities() -> None:
+        if state["ai_framework"] == AIFrameworkType.PYDANTIC_AI:
+            (
+                state["enable_web_search"],
+                state["enable_web_fetch"],
+            ) = prompt_pydantic_capabilities()
+        else:
+            state["enable_web_search"] = False
+            state["enable_web_fetch"] = False
+
+    def step_rag_config() -> None:
+        state["rag_features"] = prompt_rag_config()
+
+    def step_langsmith() -> None:
+        if state["ai_framework"] in (
+            AIFrameworkType.LANGCHAIN,
+            AIFrameworkType.LANGGRAPH,
+            AIFrameworkType.DEEPAGENTS,
+        ):
+            state["enable_langsmith"] = prompt_langsmith()
+        else:
+            state["enable_langsmith"] = False
+
+    def step_channels() -> None:
+        state["use_telegram"], state["use_slack"] = prompt_channels()
+
+    def step_teams_billing() -> None:
+        state["teams_billing"] = prompt_teams_billing(database=state["database"])
+
+    def step_email() -> None:
+        (
+            state["enable_email"],
+            state["email_provider"],
+            state["enable_newsletter_signup"],
+        ) = prompt_email_config()
+
+    def step_rate_limit_config() -> None:
+        if state["integrations"].get("enable_rate_limiting"):
+            (
+                state["rate_limit_requests"],
+                state["rate_limit_period"],
+                state["rate_limit_storage"],
+            ) = prompt_rate_limit_config(
+                redis_enabled=state["integrations"].get("enable_redis", False)
+            )
+
+    def step_brand_color() -> None:
+        if state["frontend"] != FrontendType.NONE:
+            state["brand_color"] = prompt_brand_color()
+        else:
+            state["brand_color"] = BrandColorType.BLUE
+
+    def step_marketing() -> None:
+        if state["frontend"] != FrontendType.NONE:
+            state["marketing_features"] = prompt_marketing_features()
+        else:
+            state["marketing_features"] = {}
+
+    steps: list[tuple[str, Any]] = [
+        ("Basic Information", step_basic_info),
+        ("Database", step_database),
+        ("ORM Type", step_orm_type),
+        ("OAuth Social Login", step_oauth),
+        ("Session Management", step_session),
+        ("Background Tasks", step_background_tasks),
+        ("Integrations", step_integrations),
+        ("Dev Tools", step_dev_tools),
+        ("Reverse Proxy", step_reverse_proxy),
+        ("Frontend Framework", step_frontend),
+        ("Python Version", step_python_version),
+        ("Ports", step_ports),
+        ("AI Framework", step_ai_framework),
+        ("Observability (Logfire)", step_logfire),
+        ("Agent Sandbox", step_sandbox_backend),
+        ("LLM Provider", step_llm_provider),
+        ("PydanticAI Capabilities", step_pydantic_capabilities),
+        ("RAG", step_rag_config),
+        ("LangSmith", step_langsmith),
+        ("Messaging Channels", step_channels),
+        ("Teams & Billing", step_teams_billing),
+        ("Email", step_email),
+        ("Rate Limit Config", step_rate_limit_config),
+        ("Brand Color", step_brand_color),
+        ("Marketing & Public Pages", step_marketing),
+    ]
+
+    # Linear pass — no inter-section prompts. snapshots[] is kept around so a
+    # future "review & edit answers" screen can replay individual sections.
+    snapshots: list[dict[str, Any]] = [dict(state)]
+    for _section_name, runner in steps:
+        runner()
+        snapshots.append(dict(state))
+
+    # Re-export wizard answers into the variables expected by ProjectConfig().
+    basic_info = {
+        "project_name": state["project_name"],
+        "project_description": state["project_description"],
+        "author_name": state["author_name"],
+        "author_email": state["author_email"],
+        "timezone": state["timezone"],
+    }
+    database = state["database"]
+    orm_type = state["orm_type"]
+    oauth_provider = state["oauth_provider"]
+    enable_session_management = state["enable_session_management"]
+    background_tasks = state["background_tasks"]
+    integrations = state["integrations"]
+    dev_tools = state["dev_tools"]
+    reverse_proxy = state["reverse_proxy"]
+    frontend = state["frontend"]
+    python_version = state["python_version"]
+    ports = state["ports"]
+    ai_framework = state["ai_framework"]
+    enable_logfire = state["enable_logfire"]
+    logfire_features = state["logfire_features"]
+    sandbox_backend = state["sandbox_backend"]
+    llm_provider = state["llm_provider"]
+    enable_web_search = state["enable_web_search"]
+    enable_web_fetch = state["enable_web_fetch"]
+    rag_features = state["rag_features"]
+    enable_langsmith = state["enable_langsmith"]
+    use_telegram = state["use_telegram"]
+    use_slack = state["use_slack"]
+    teams_billing = state["teams_billing"]
+    enable_email = state["enable_email"]
+    email_provider = state["email_provider"]
+    enable_newsletter_signup = state["enable_newsletter_signup"]
+    rate_limit_requests = state["rate_limit_requests"]
+    rate_limit_period = state["rate_limit_period"]
+    rate_limit_storage = state["rate_limit_storage"]
+    brand_color = state["brand_color"]
+    marketing_features = state["marketing_features"]
 
     # Extract ci_type separately for type safety
     ci_type = cast(CIType, dev_tools.pop("ci_type"))

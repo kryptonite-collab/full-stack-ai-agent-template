@@ -1,6 +1,5 @@
-{%- if cookiecutter.enable_billing and cookiecutter.enable_teams %}
 "use client";
-{% raw %}
+
 import { useState } from "react";
 import { Minus, Plus, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -73,9 +72,7 @@ export function SeatSelectorDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>
-            {mode === "update" ? "Change seat count" : "Choose your seats"}
-          </DialogTitle>
+          <DialogTitle>{mode === "update" ? "Change seat count" : "Choose your seats"}</DialogTitle>
           <DialogDescription>
             {mode === "update"
               ? "Adjust the number of seats on your current subscription."
@@ -86,7 +83,7 @@ export function SeatSelectorDialog({
         <div className="space-y-5 py-2">
           <div className="flex items-center justify-between gap-4">
             <span className="flex items-center gap-2 text-sm font-medium">
-              <Users className="h-4 w-4 text-muted-foreground" />
+              <Users className="text-muted-foreground h-4 w-4" />
               Seats
             </span>
             <div className="flex items-center gap-2">
@@ -96,24 +93,32 @@ export function SeatSelectorDialog({
                 className="h-8 w-8 p-0"
                 onClick={() => change(-1)}
                 disabled={seats <= 1}
+                aria-label="Remove a seat"
               >
-                <Minus className="h-3.5 w-3.5" />
+                <Minus className="h-3.5 w-3.5" aria-hidden />
               </Button>
-              <span className="w-8 text-center text-lg font-bold tabular-nums">{seats}</span>
+              <span
+                className="w-8 text-center text-lg font-bold tabular-nums"
+                aria-live="polite"
+                aria-label={`${seats} seats selected`}
+              >
+                {seats}
+              </span>
               <Button
                 variant="outline"
                 size="sm"
                 className="h-8 w-8 p-0"
                 onClick={() => change(1)}
+                aria-label="Add a seat"
               >
-                <Plus className="h-3.5 w-3.5" />
+                <Plus className="h-3.5 w-3.5" aria-hidden />
               </Button>
             </div>
           </div>
 
           {!plansLoading && perSeat !== null && (
-            <div className="rounded-lg bg-muted/50 p-4 text-sm">
-              <div className="flex justify-between text-muted-foreground">
+            <div className="bg-muted/50 rounded-lg p-4 text-sm">
+              <div className="text-muted-foreground flex justify-between">
                 <span>Per seat / month</span>
                 <span>{fmt(perSeat)}</span>
               </div>
@@ -130,18 +135,10 @@ export function SeatSelectorDialog({
             Cancel
           </Button>
           <Button onClick={handleConfirm} disabled={busy}>
-            {busy
-              ? "Please wait…"
-              : mode === "update"
-              ? "Save changes"
-              : "Continue to checkout"}
+            {busy ? "Please wait…" : mode === "update" ? "Save changes" : "Continue to checkout"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
-{% endraw %}
-{%- else %}
-export {};
-{%- endif %}

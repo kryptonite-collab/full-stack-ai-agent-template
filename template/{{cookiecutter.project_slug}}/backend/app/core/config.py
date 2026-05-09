@@ -142,13 +142,17 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
 {%- endif %}
 
+    # Public URL of the frontend; used to build OAuth redirect targets and
+    # Stripe checkout/portal return URLs. Always declared (not gated) because
+    # the billing model_validator references it unconditionally.
+    FRONTEND_URL: str = "http://localhost:{{ cookiecutter.frontend_port }}"
+
 {%- if cookiecutter.enable_oauth_google %}
 
     # === OAuth2 (Google) ===
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = "http://localhost:{{ cookiecutter.backend_port }}/api/v1/oauth/google/callback"
-    FRONTEND_URL: str = "http://localhost:{{ cookiecutter.frontend_port }}"
 {%- endif %}
 
 {%- if cookiecutter.use_api_key %}
@@ -451,6 +455,13 @@ class Settings(BaseSettings):
     LLAMAPARSE_API_KEY: str = ""
     LLAMAPARSE_TIER: str = "agentic"  # fast, cost_effective, agentic, agentic_plus
     {%- endif %}
+    {%- if cookiecutter.use_liteparse or cookiecutter.use_all_pdf_parsers %}
+    # LiteParse OCR — empty url uses bundled Tesseract.js;
+    # point at e.g. http://easyocr:8000 or http://paddleocr:8000 for HTTP OCR.
+    LITEPARSE_OCR_SERVER_URL: str = ""
+    LITEPARSE_OCR_LANGUAGE: str = "en"
+    LITEPARSE_TIMEOUT_SECONDS: float = 600.0
+    {%- endif %}
 
 {%- if cookiecutter.enable_rag_image_description %}
     # Image Description (LLM vision)
@@ -482,7 +493,7 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str = ""
     STRIPE_API_VERSION: str = "2025-04-30.acacia"
     STRIPE_TRIAL_DAYS_DEFAULT: int = {{ cookiecutter.billing_trial_days_default }}
-    STRIPE_TRIAL_REQUIRES_PAYMENT_METHOD: bool = {{ cookiecutter.billing_trial_requires_card | lower }}
+    STRIPE_TRIAL_REQUIRES_PAYMENT_METHOD: bool = {{ "True" if cookiecutter.billing_trial_requires_card else "False" }}
 
     BILLING_DEFAULT_CURRENCY: str = "{{ cookiecutter.billing_default_currency }}"
     BILLING_SUCCESS_URL: str = ""
@@ -563,9 +574,18 @@ class Settings(BaseSettings):
             method=self.PDF_PARSER,
             api_key=self.LLAMAPARSE_API_KEY,
             tier=self.LLAMAPARSE_TIER,
+            liteparse_ocr_server_url=self.LITEPARSE_OCR_SERVER_URL or None,
+            liteparse_ocr_language=self.LITEPARSE_OCR_LANGUAGE,
+            liteparse_timeout_seconds=self.LITEPARSE_TIMEOUT_SECONDS,
         )
         {%- elif cookiecutter.use_llamaparse %}
         pdf_parser = PdfParser(api_key=self.LLAMAPARSE_API_KEY, tier=self.LLAMAPARSE_TIER)
+        {%- elif cookiecutter.use_liteparse %}
+        pdf_parser = PdfParser(
+            liteparse_ocr_server_url=self.LITEPARSE_OCR_SERVER_URL or None,
+            liteparse_ocr_language=self.LITEPARSE_OCR_LANGUAGE,
+            liteparse_timeout_seconds=self.LITEPARSE_TIMEOUT_SECONDS,
+        )
         {%- else %}
         pdf_parser = PdfParser()
         {%- endif %}

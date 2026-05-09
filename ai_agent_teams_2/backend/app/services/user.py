@@ -10,7 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import AlreadyExistsError, AuthenticationError, NotFoundError
-from app.core.security import get_password_hash, verify_password
+from app.core.security import (
+    create_magic_link_token,
+    create_password_reset_token,
+    get_password_hash,
+    verify_password,
+    verify_special_token,
+)
 from app.db.models.user import User
 from app.repositories import user_repo
 from app.schemas.user import UserCreate, UserUpdate
@@ -208,4 +214,81 @@ class UserService:
                 message="User not found",
                 details={"user_id": str(user_id)},
             )
+        return user
+
+    # ------------------------------------------------------------------
+    # Password reset flow
+    # ------------------------------------------------------------------
+
+    async def issue_password_reset_token(self, email: str) -> tuple[User, str] | None:
+        """Issue a short-lived JWT for the user with this email, or return None
+        if no such user exists.
+
+        Caller should email the token to the user as part of a reset URL.
+        Returning None lets the route degrade gracefully without leaking
+        existence — the public API always returns the same "if an account
+        exists, you'll get a link" response.
+        """
+        user = await user_repo.get_by_email(self.db, email)
+        if user is None or not user.is_active:
+            return None
+        token = create_password_reset_token(subject=str(user.id))
+        return user, token
+
+    async def confirm_password_reset(self, token: str, new_password: str) -> User:
+        """Verify the reset token and set a new password.
+
+        Raises AuthenticationError if the token is invalid, expired, or of
+        the wrong type. NotFoundError if the user disappeared between issuing
+        and confirming.
+        """
+        payload = verify_special_token(token, expected_type="password_reset")
+        if payload is None or "sub" not in payload:
+            raise AuthenticationError(message="Reset link is invalid or has expired")
+        try:
+            user_id = UUID(str(payload["sub"]))
+        except (TypeError, ValueError) as exc:
+            raise AuthenticationError(
+                message="Reset link is invalid or has expired"
+            ) from exc
+
+        user = await self.get_by_id(user_id)
+        if not user.is_active:
+            raise AuthenticationError(message="Account is disabled")
+
+        await user_repo.update(
+            self.db,
+            db_user=user,
+            update_data={"hashed_password": get_password_hash(new_password)},
+        )
+        return user
+
+    # ------------------------------------------------------------------
+    # Magic-link sign-in flow
+    # ------------------------------------------------------------------
+
+    async def issue_magic_link_token(self, email: str) -> tuple[User, str] | None:
+        user = await user_repo.get_by_email(self.db, email)
+        if user is None or not user.is_active:
+            return None
+        token = create_magic_link_token(subject=str(user.id))
+        return user, token
+
+    async def consume_magic_link_token(self, token: str) -> User:
+        """Verify the magic-link token and return the user. Caller mints
+        access/refresh tokens for the resolved user.
+        """
+        payload = verify_special_token(token, expected_type="magic_link")
+        if payload is None or "sub" not in payload:
+            raise AuthenticationError(message="Magic link is invalid or has expired")
+        try:
+            user_id = UUID(str(payload["sub"]))
+        except (TypeError, ValueError) as exc:
+            raise AuthenticationError(
+                message="Magic link is invalid or has expired"
+            ) from exc
+
+        user = await self.get_by_id(user_id)
+        if not user.is_active:
+            raise AuthenticationError(message="Account is disabled")
         return user

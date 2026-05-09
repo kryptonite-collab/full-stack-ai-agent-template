@@ -1,6 +1,5 @@
-{%- if cookiecutter.use_jwt %}
 "use client";
-{% raw %}
+
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { apiClient } from "@/lib/api-client";
@@ -16,7 +15,7 @@ export interface AdminUserRead {
 }
 
 interface AdminUserList {
-  items: AdminAdminUserRead[];
+  items: AdminUserRead[];
   total: number;
 }
 
@@ -35,7 +34,11 @@ export function useAdminUsers() {
   const [impersonating, setImpersonating] = useState<string | null>(null);
 
   const fetchUsers = useCallback(
-    async ({ skip = 0, limit = 50, search }: { skip?: number; limit?: number; search?: string } = {}) => {
+    async ({
+      skip = 0,
+      limit = 50,
+      search,
+    }: { skip?: number; limit?: number; search?: string } = {}) => {
       setIsLoading(true);
       try {
         const params = new URLSearchParams({ skip: String(skip), limit: String(limit) });
@@ -49,21 +52,18 @@ export function useAdminUsers() {
         setIsLoading(false);
       }
     },
-    []
+    [],
   );
 
-  const updateUser = useCallback(
-    async (userId: string, patch: Partial<AdminUserRead>) => {
-      try {
-        const updated = await apiClient.patch<AdminUserRead>(`/admin/users/${userId}`, patch);
-        setUsers((prev) => prev.map((u) => (u.id === userId ? updated : u)));
-        toast.success("User updated");
-      } catch {
-        toast.error("Failed to update user");
-      }
-    },
-    []
-  );
+  const updateUser = useCallback(async (userId: string, patch: Partial<AdminUserRead>) => {
+    try {
+      const updated = await apiClient.patch<AdminUserRead>(`/admin/users/${userId}`, patch);
+      setUsers((prev) => prev.map((u) => (u.id === userId ? updated : u)));
+      toast.success("User updated");
+    } catch {
+      toast.error("Failed to update user");
+    }
+  }, []);
 
   const deleteUser = useCallback(async (userId: string) => {
     try {
@@ -80,7 +80,7 @@ export function useAdminUsers() {
     setImpersonating(userId);
     try {
       const { access_token } = await apiClient.post<ImpersonateResponse>(
-        `/admin/users/${userId}/impersonate`
+        `/admin/users/${userId}/impersonate`,
       );
       return access_token;
     } catch {
@@ -91,7 +91,14 @@ export function useAdminUsers() {
     }
   }, []);
 
-  return { users, total, isLoading, impersonating, fetchUsers, updateUser, deleteUser, impersonateUser };
+  return {
+    users,
+    total,
+    isLoading,
+    impersonating,
+    fetchUsers,
+    updateUser,
+    deleteUser,
+    impersonateUser,
+  };
 }
-{% endraw %}
-{%- endif %}

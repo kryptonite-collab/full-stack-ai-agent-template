@@ -30,6 +30,7 @@ enable_rate_limiting = "{{ cookiecutter.enable_rate_limiting }}" == "True"
 enable_session_management = "{{ cookiecutter.enable_session_management }}" == "True"
 enable_webhooks = "{{ cookiecutter.enable_webhooks }}" == "True"
 enable_oauth = "{{ cookiecutter.enable_oauth }}" == "True"
+use_auth = "{{ cookiecutter.use_auth }}" == "True"
 use_celery = "{{ cookiecutter.use_celery }}" == "True"
 use_taskiq = "{{ cookiecutter.use_taskiq }}" == "True"
 use_arq = "{{ cookiecutter.use_arq }}" == "True"
@@ -50,6 +51,12 @@ use_slack = "{{ cookiecutter.use_slack }}" == "True"
 enable_docker = "{{ cookiecutter.enable_docker }}" == "True"
 enable_teams = "{{ cookiecutter.enable_teams }}" == "True"
 enable_billing = "{{ cookiecutter.enable_billing }}" == "True"
+enable_credits_system = "{{ cookiecutter.enable_credits_system }}" == "True"
+enable_usage_dashboard = "{{ cookiecutter.enable_usage_dashboard }}" == "True"
+enable_usage_anomaly_detection = "{{ cookiecutter.enable_usage_anomaly_detection }}" == "True"
+enable_email = "{{ cookiecutter.enable_email }}" == "True"
+enable_newsletter_signup = "{{ cookiecutter.enable_newsletter_signup }}" == "True"
+enable_marketing_site = "{{ cookiecutter.enable_marketing_site }}" == "True"
 
 
 def remove_file(path: str) -> None:
@@ -131,6 +138,18 @@ if not enable_session_management:
 # --- Admin panel (requires SQLAlchemy, not SQLModel) ---
 if not enable_admin_panel or (not use_postgresql and not use_sqlite) or not use_sqlalchemy:
     remove_file(os.path.join(backend_app, "admin.py"))
+
+# --- Admin stats / Stripe events listing — disabled when admin panel is off ---
+if not enable_admin_panel:
+    remove_file(os.path.join(backend_app, "schemas", "admin.py"))
+    remove_file(os.path.join(backend_app, "services", "admin.py"))
+    remove_file(os.path.join(backend_app, "api", "routes", "v1", "admin_stats.py"))
+    if use_frontend:
+        frontend_src_for_admin = os.path.join(os.getcwd(), "frontend", "src")
+        remove_dir(os.path.join(frontend_src_for_admin, "app", "api", "admin", "stats"))
+        remove_dir(
+            os.path.join(frontend_src_for_admin, "app", "api", "admin", "stripe-events"),
+        )
 
 # --- Redis/Cache files ---
 if not enable_redis:
@@ -243,8 +262,6 @@ if not enable_redis:
     remove_file(os.path.join(backend_tests, "test_clients.py"))
 if not (use_postgresql and use_sqlalchemy):
     remove_file(os.path.join(backend_tests, "test_services_conversation.py"))
-if not use_celery:
-    remove_file(os.path.join(backend_tests, "test_worker.py"))
 if not (enable_admin_panel and use_postgresql):
     remove_file(os.path.join(backend_tests, "test_admin.py"))
 
@@ -285,10 +302,8 @@ if not use_any_background_tasks:
 else:
     if not use_celery:
         remove_file(os.path.join(worker_dir, "celery_app.py"))
-        remove_file(os.path.join(worker_dir, "tasks", "examples.py"))
     if not use_taskiq:
         remove_file(os.path.join(worker_dir, "taskiq_app.py"))
-        remove_file(os.path.join(worker_dir, "tasks", "taskiq_examples.py"))
         remove_file(os.path.join(worker_dir, "tasks", "schedules.py"))
     if not use_arq:
         remove_file(os.path.join(worker_dir, "arq_app.py"))
@@ -296,23 +311,35 @@ else:
 
 # --- Cleanup empty directories ---
 def remove_empty_dirs(path: str) -> None:
-    """Recursively remove empty directories."""
+    """Recursively remove empty directories.
+
+    A directory is considered "empty" when it contains nothing, OR when it
+    only contains an __init__.py file that is itself empty (whitespace-only).
+    A non-trivial __init__.py (with imports, registries, public API) is kept
+    even when its siblings are gone — removing it would silently break code
+    that imports from the package (e.g. CONNECTOR_REGISTRY in
+    services/rag/connectors).
+    """
     if not os.path.isdir(path):
         return
     for item in os.listdir(path):
         item_path = os.path.join(path, item)
         if os.path.isdir(item_path):
             remove_empty_dirs(item_path)
-    # Check if directory is now empty (except __init__.py)
     remaining = os.listdir(path)
     if not remaining:
         os.rmdir(path)
         print(f"  Removed empty: {os.path.relpath(path)}/")
     elif remaining == ["__init__.py"]:
-        # Directory only has __init__.py - remove it
-        os.remove(os.path.join(path, "__init__.py"))
-        os.rmdir(path)
-        print(f"  Removed empty: {os.path.relpath(path)}/")
+        init_path = os.path.join(path, "__init__.py")
+        try:
+            init_text = open(init_path).read().strip()
+        except OSError:
+            init_text = ""
+        if init_text == "":
+            os.remove(init_path)
+            os.rmdir(path)
+            print(f"  Removed empty: {os.path.relpath(path)}/")
 
 
 # Clean up empty directories in key locations
@@ -328,7 +355,9 @@ for subdir in [
     "services/email",
     "services/email/providers",
     "services/rag",
-    "services/rag/connectors",
+    # NOTE: services/rag/connectors intentionally excluded — its __init__.py
+    # defines CONNECTOR_REGISTRY which sync_source.py imports unconditionally.
+    # Removing the dir (even when no connectors are configured) breaks startup.
     "services/rag/sources",
     "services/rate_limit",
 ]:
@@ -579,6 +608,13 @@ if not enable_teams:
         remove_dir(os.path.join(frontend_src, "app", "[locale]", "(dashboard)", "billing"))
         remove_file(os.path.join(frontend_src, "hooks", "use-billing.ts"))
         remove_file(os.path.join(frontend_src, "types", "billing.ts"))
+        # Keep lib/teaser-plans.ts — it's pure static fallback data with no
+        # billing dependencies. The /pricing landing page imports it and
+        # gracefully renders teaser cards when the live `/billing/plans`
+        # endpoint is unavailable (which is exactly the case here).
+        remove_dir(
+            os.path.join(frontend_src, "app", "[locale]", "(dashboard)", "admin", "stripe-events"),
+        )
 
 # --- Billing: remove billing-specific files if enable_billing is false ---
 if not enable_billing:
@@ -605,5 +641,150 @@ if not enable_billing:
         remove_dir(os.path.join(frontend_src, "app", "[locale]", "(dashboard)", "billing"))
         remove_file(os.path.join(frontend_src, "hooks", "use-billing.ts"))
         remove_file(os.path.join(frontend_src, "types", "billing.ts"))
+        # teaser-plans.ts stays — it's the fallback data for /pricing when
+        # there is no live billing backend. /pricing imports it directly.
+        # Admin Stripe events page is billing-specific
+        remove_dir(
+            os.path.join(frontend_src, "app", "[locale]", "(dashboard)", "admin", "stripe-events"),
+        )
+        # Settings → Integrations tab depends on useBilling for the Stripe
+        # portal link. Drop the page when billing is off; the settings index
+        # auto-skips it because the layout reads the directory.
+        remove_dir(
+            os.path.join(
+                frontend_src, "app", "[locale]", "(dashboard)", "settings", "integrations",
+            ),
+        )
+
+# --- Credits system: per-org balance, usage events, top-up purchases ---
+# Backend-only cleanup. Frontend usage UI (usage-gauge, usage-timeline,
+# /billing/usage page) STAYS regardless — these are imported by the dashboard
+# and pricing flows and gracefully degrade when the API returns no data.
+if not enable_credits_system:
+    remove_file(os.path.join(backend_app, "repositories", "credit_transaction.py"))
+    remove_file(os.path.join(backend_app, "repositories", "usage_event.py"))
+    remove_file(os.path.join(backend_app, "db", "models", "credit_transaction.py"))
+
+# --- Usage spike detection: cron job that compares hourly usage vs rolling avg ---
+if not enable_usage_anomaly_detection:
+    remove_file(os.path.join(backend_app, "services", "anomaly_detection.py"))
+
+# --- Email: lifecycle + notification emails (welcome, invitation, billing) ---
+if not enable_email:
+    remove_dir(os.path.join(backend_app, "services", "email"))
+    # Newsletter is gated by enable_email AND enable_newsletter_signup —
+    # if the email service is gone, the newsletter route can't function either.
+    remove_file(os.path.join(backend_app, "services", "newsletter.py"))
+
+# --- Newsletter signup: POST /newsletter/signup endpoint + landing form ---
+if not enable_newsletter_signup:
+    remove_file(os.path.join(backend_app, "api", "routes", "v1", "marketing.py"))
+    remove_file(os.path.join(backend_app, "schemas", "marketing.py"))
+    remove_file(os.path.join(backend_app, "services", "newsletter.py"))
+    if use_frontend:
+        frontend_src = os.path.join(os.getcwd(), "frontend", "src")
+        remove_file(
+            os.path.join(frontend_src, "components", "marketing", "newsletter-signup.tsx"),
+        )
+
+# --- Marketing site: remove blog / about / contact / help / security / community / legal ---
+# Onboarding, settings, dashboard chrome stay regardless — they're core product UI.
+# Landing (/) and pricing stay — they're entry points even for non-marketing setups.
+if not enable_marketing_site:
+    # Backend: contact endpoint is part of marketing surface
+    remove_file(os.path.join(backend_app, "schemas", "contact.py"))
+    remove_file(os.path.join(backend_app, "services", "contact.py"))
+    remove_file(os.path.join(backend_app, "api", "routes", "v1", "contact.py"))
+
+# --- API keys + password reset + magic link: all require auth ---
+if not use_auth:
+    # API keys
+    remove_file(os.path.join(backend_app, "db", "models", "api_key.py"))
+    remove_file(os.path.join(backend_app, "schemas", "api_key.py"))
+    remove_file(os.path.join(backend_app, "repositories", "api_key.py"))
+    remove_file(os.path.join(backend_app, "services", "api_key.py"))
+    remove_file(os.path.join(backend_app, "api", "routes", "v1", "api_keys.py"))
+    # Password reset + magic link schemas (auth-only flows)
+    remove_file(os.path.join(backend_app, "schemas", "password_reset.py"))
+    if use_frontend:
+        frontend_src_for_api_keys = os.path.join(os.getcwd(), "frontend", "src")
+        remove_dir(os.path.join(frontend_src_for_api_keys, "app", "api", "api-keys"))
+        remove_file(
+            os.path.join(
+                frontend_src_for_api_keys, "components", "settings", "api-key-manager.tsx"
+            ),
+        )
+        # Frontend proxies for password reset + magic link
+        remove_dir(
+            os.path.join(frontend_src_for_api_keys, "app", "api", "auth", "password-reset")
+        )
+        remove_dir(
+            os.path.join(frontend_src_for_api_keys, "app", "api", "auth", "magic-link")
+        )
+        # Frontend pages
+        remove_dir(
+            os.path.join(
+                frontend_src_for_api_keys,
+                "app",
+                "[locale]",
+                "(auth)",
+                "reset-password",
+            )
+        )
+        remove_dir(
+            os.path.join(
+                frontend_src_for_api_keys, "app", "[locale]", "auth", "magic-link"
+            )
+        )
+        remove_file(
+            os.path.join(
+                frontend_src_for_api_keys, "components", "auth", "reset-password-form.tsx"
+            )
+        )
+
+if not enable_marketing_site and use_frontend:
+    frontend_root = os.path.join(os.getcwd(), "frontend")
+    frontend_src = os.path.join(frontend_root, "src")
+    locale_app = os.path.join(frontend_src, "app", "[locale]")
+
+    # Frontend proxy for backend /contact
+    remove_dir(os.path.join(frontend_src, "app", "api", "contact"))
+
+    # Marketing route pages
+    for d in ("about", "blog", "community", "contact", "help", "legal", "security"):
+        remove_dir(os.path.join(locale_app, d))
+
+    # Per-locale public app-level files (sitemap / robots / icons / OG)
+    remove_file(os.path.join(frontend_src, "app", "sitemap.ts"))
+    remove_file(os.path.join(frontend_src, "app", "robots.ts"))
+    remove_file(os.path.join(frontend_src, "app", "manifest.ts"))
+    remove_file(os.path.join(frontend_src, "app", "icon.tsx"))
+    remove_file(os.path.join(frontend_src, "app", "apple-icon.tsx"))
+    remove_file(os.path.join(frontend_src, "app", "opengraph-image.tsx"))
+
+    # Marketing-only sub-trees: only the ones used exclusively by the
+    # blog / legal / SEO routes that we just removed. The shared marketing
+    # components (hero, section, pricing-teaser, footer, etc.) STAY because
+    # the landing page (/) and pricing (/pricing) still depend on them — see
+    # the comment at the top of this block.
+    remove_dir(os.path.join(frontend_src, "components", "blog"))
+    remove_dir(os.path.join(frontend_src, "components", "legal"))
+    # Only files that have no callers outside removed routes can go:
+    for f in (
+        "cookie-banner.tsx",      # used by legal pages
+        "legal-page.tsx",         # used by legal pages
+        "contact-form.tsx",       # used by /contact
+    ):
+        remove_file(os.path.join(frontend_src, "components", "marketing", f))
+
+    # Marketing-only lib helpers
+    remove_file(os.path.join(frontend_src, "lib", "seo.ts"))
+    remove_file(os.path.join(frontend_src, "lib", "schema-org.ts"))
+    remove_file(os.path.join(frontend_src, "lib", "blog.ts"))
+    remove_file(os.path.join(frontend_src, "lib", "changelog.ts"))
+    remove_file(os.path.join(frontend_src, "lib", "contact-info.ts"))
+
+    # MDX content directory
+    remove_dir(os.path.join(frontend_root, "content"))
 
 print("Project generated successfully!")

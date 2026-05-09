@@ -129,6 +129,13 @@ class PdfParser(BaseModel):
 {%- else %}
     method: str = "pymupdf"
 {%- endif %}
+{%- if cookiecutter.use_liteparse or cookiecutter.use_all_pdf_parsers %}
+    # LiteParse-specific. ocr_server_url=None falls back to bundled Tesseract.js.
+    # Set to e.g. "http://easyocr:8000" to use an external OCR microservice.
+    liteparse_ocr_server_url: str | None = None
+    liteparse_ocr_language: str = "en"
+    liteparse_timeout_seconds: float = 600.0
+{%- endif %}
 
 
 class RAGSettings(BaseModel):

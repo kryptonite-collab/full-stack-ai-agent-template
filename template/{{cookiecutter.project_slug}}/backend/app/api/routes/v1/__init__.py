@@ -56,6 +56,15 @@ from app.api.routes.v1 import billing
 {%- if cookiecutter.enable_newsletter_signup %}
 from app.api.routes.v1 import marketing
 {%- endif %}
+{%- if cookiecutter.enable_marketing_site %}
+from app.api.routes.v1 import contact
+{%- endif %}
+{%- if cookiecutter.use_auth %}
+from app.api.routes.v1 import api_keys
+{%- endif %}
+{%- if cookiecutter.enable_admin_panel %}
+from app.api.routes.v1 import admin_stats
+{%- endif %}
 
 v1_router = APIRouter()
 
@@ -173,4 +182,13 @@ v1_router.include_router(billing.router, prefix="/billing", tags=["billing"])
 {%- endif %}
 {%- if cookiecutter.enable_newsletter_signup %}
 v1_router.include_router(marketing.router, tags=["marketing"])
+{%- endif %}
+{%- if cookiecutter.enable_marketing_site %}
+v1_router.include_router(contact.router, tags=["contact"])
+{%- endif %}
+{%- if cookiecutter.use_auth %}
+v1_router.include_router(api_keys.router, prefix="/api-keys", tags=["api-keys"])
+{%- endif %}
+{%- if cookiecutter.enable_admin_panel %}
+v1_router.include_router(admin_stats.router, prefix="/admin", tags=["admin:stats"])
 {%- endif %}

@@ -4,8 +4,9 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { useChat } from "@/hooks";
 import { MessageList } from "./message-list";
 import { ChatInput } from "./chat-input";
+import { ChatEmptyState } from "./chat-empty-state";
 import { ToolApprovalDialog } from "./tool-approval-dialog";
-import { Bot, ChevronDown, Check } from "lucide-react";
+import { ChevronDown, Check, Database } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -15,7 +16,6 @@ import {
 import type { PendingApproval, Decision } from "@/types";
 import { useConversationStore, useChatStore } from "@/stores";
 import { useConversations } from "@/hooks";
-import { Database } from "lucide-react";
 import { useKBPanelStore } from "@/stores";
 
 export function ChatContainer() {
@@ -127,6 +127,22 @@ function AuthenticatedChatContainer() {
   }, [messages]);
   const { toggle: toggleKBPanel } = useKBPanelStore();
 
+  const handleRegenerate = useCallback(
+    (assistantMessageId: string) => {
+      const idx = messages.findIndex((m) => m.id === assistantMessageId);
+      if (idx < 0) return;
+      // Walk backwards to find the user message that prompted this turn.
+      for (let i = idx - 1; i >= 0; i--) {
+        const m = messages[i];
+        if (m?.role === "user") {
+          sendMessage(m.content, m.fileIds);
+          return;
+        }
+      }
+    },
+    [messages, sendMessage],
+  );
+
   return (
     <ChatUI
       messages={messages}
@@ -134,6 +150,7 @@ function AuthenticatedChatContainer() {
       isProcessing={isProcessing}
       sendMessage={sendMessage}
       onModelChange={setModel}
+      onRegenerate={handleRegenerate}
       messagesEndRef={messagesEndRef}
       scrollContainerRef={scrollContainerRef}
       pendingApproval={pendingApproval}
@@ -170,7 +187,7 @@ function ModelSelector({ onChange }: { onChange: (model: string | null) => void 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors">
+        <button className="text-foreground/55 hover:bg-foreground/5 hover:text-foreground inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-mono text-[11px] uppercase tracking-wider transition-colors">
           {selected.label}
           <ChevronDown className="h-3 w-3" />
         </button>
@@ -200,6 +217,7 @@ interface ChatUIProps {
   isProcessing: boolean;
   sendMessage: (content: string, fileIds?: string[]) => void;
   onModelChange?: (model: string | null) => void;
+  onRegenerate?: (messageId: string) => void;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   pendingApproval?: PendingApproval | null;
@@ -213,6 +231,7 @@ function ChatUI({
   isProcessing,
   sendMessage,
   onModelChange,
+  onRegenerate,
   messagesEndRef,
   scrollContainerRef,
   pendingApproval,
@@ -226,17 +245,11 @@ function ChatUI({
         className="scrollbar-thin flex-1 overflow-y-auto px-2 py-4 sm:px-4 sm:py-6"
       >
         {messages.length === 0 ? (
-          <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-4">
-            <div className="bg-secondary flex h-14 w-14 items-center justify-center rounded-full sm:h-16 sm:w-16">
-              <Bot className="h-7 w-7 sm:h-8 sm:w-8" />
-            </div>
-            <div className="px-4 text-center">
-              <p className="text-foreground text-base font-medium sm:text-lg">AI Assistant</p>
-              <p className="text-sm">Start a conversation to get help</p>
-            </div>
+          <div className="flex h-full items-center">
+            <ChatEmptyState onPick={(prompt) => sendMessage(prompt)} />
           </div>
         ) : (
-          <MessageList messages={messages} />
+          <MessageList messages={messages} onRegenerate={onRegenerate} />
         )}
         <div ref={messagesEndRef} />
       </div>
@@ -254,7 +267,7 @@ function ChatUI({
       )}
 
       <div className="px-2 pb-2 sm:px-4 sm:pb-4">
-        <div className="bg-card rounded-xl border shadow-sm">
+        <div className="bg-card border-foreground/10 rounded-2xl border shadow-sm transition-colors focus-within:border-foreground/30">
           <div className="px-3 pt-3 sm:px-4 sm:pt-4">
             <ChatInput
               onSend={sendMessage}
@@ -262,15 +275,22 @@ function ChatUI({
               isProcessing={isProcessing}
             />
           </div>
-          <div className="flex items-center justify-between px-3 pb-2 sm:px-4 sm:pb-3">
+          <div className="border-foreground/8 flex items-center justify-between border-t px-3 py-2 sm:px-4">
             <div className="flex items-center gap-2">
               <span
-                className={`inline-block h-1.5 w-1.5 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`}
-              />
+                className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider ${isConnected ? "text-foreground/55" : "text-destructive"}`}
+              >
+                <span
+                  className={`inline-block h-1.5 w-1.5 rounded-full ${
+                    isConnected ? "bg-brand" : "bg-destructive"
+                  } ${isConnected ? "animate-pulse" : ""}`}
+                />
+                {isConnected ? "Live" : "Offline"}
+              </span>
               {onToggleKBPanel && (
                 <button
                   onClick={onToggleKBPanel}
-                  className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors"
+                  className="text-foreground/55 hover:bg-foreground/5 hover:text-foreground inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors"
                   title="Toggle knowledge bases"
                 >
                   <Database className="h-3.5 w-3.5" />
@@ -281,6 +301,9 @@ function ChatUI({
             {onModelChange && <ModelSelector onChange={onModelChange} />}
           </div>
         </div>
+        <p className="text-foreground/40 mt-2 text-center font-mono text-[10px] uppercase tracking-wider">
+          AI can make mistakes. Verify important information.
+        </p>
       </div>
     </div>
   );

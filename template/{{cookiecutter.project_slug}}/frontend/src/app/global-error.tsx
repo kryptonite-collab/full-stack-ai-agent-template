@@ -1,4 +1,3 @@
-{%- if cookiecutter.use_frontend %}
 {% raw %}"use client";
 
 export default function GlobalError({
@@ -105,4 +104,3 @@ export default function GlobalError({
   );
 }
 {% endraw %}
-{%- endif %}

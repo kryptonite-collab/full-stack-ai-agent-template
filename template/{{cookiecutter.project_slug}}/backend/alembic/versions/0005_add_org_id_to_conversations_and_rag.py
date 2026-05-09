@@ -17,7 +17,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 {%- endif %}
 
 revision = "0005_org_tenant_isolation"
-down_revision = "0004_audit_log"
+down_revision = "0004_5_core_tables"
 branch_labels = None
 depends_on = None
 
@@ -73,7 +73,7 @@ Revision ID: 0005_org_tenant_isolation
 """
 
 revision = "0005_org_tenant_isolation"
-down_revision = "0004_audit_log"
+down_revision = "0004_5_core_tables"
 branch_labels = None
 depends_on = None
 

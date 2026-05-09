@@ -30,6 +30,10 @@ from app.repositories import chat_file as chat_file_repo
 from app.repositories import conversation_share as conversation_share_repo
 from app.repositories import message_rating as message_rating_repo
 {%- endif %}
+{%- if cookiecutter.enable_teams and cookiecutter.enable_rag and cookiecutter.use_jwt %}
+
+from app.repositories import knowledge_base as knowledge_base_repo
+{%- endif %}
 {%- if cookiecutter.use_pydantic_deep and cookiecutter.use_jwt %}
 
 from app.repositories import project as project_repo
@@ -69,6 +73,9 @@ __all__ = [
     "chat_file_repo",
     "conversation_share_repo",
     "message_rating_repo",
+{%- endif %}
+{%- if cookiecutter.enable_teams and cookiecutter.enable_rag and cookiecutter.use_jwt %}
+    "knowledge_base_repo",
 {%- endif %}
 {%- if cookiecutter.use_pydantic_deep and cookiecutter.use_jwt %}
     "project_repo",

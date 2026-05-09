@@ -1,4 +1,3 @@
-{%- if cookiecutter.use_database %}
 "use client";
 
 import { useEffect, useState } from "react";
@@ -17,14 +16,10 @@ import {
   Pencil,
   ChevronLeft,
   ChevronRight,
-{%- if cookiecutter.use_jwt %}
   Share2,
-{%- endif %}
 } from "lucide-react";
 import type { Conversation } from "@/types";
-{%- if cookiecutter.use_jwt %}
 import { ShareDialog } from "./share-dialog";
-{%- endif %}
 
 interface ConversationItemProps {
   conversation: Conversation;
@@ -33,9 +28,7 @@ interface ConversationItemProps {
   onDelete: () => void;
   onArchive: () => void;
   onRename: (title: string) => void;
-{%- if cookiecutter.use_jwt %}
   onShare: () => void;
-{%- endif %}
 }
 
 function ConversationItem({
@@ -45,9 +38,7 @@ function ConversationItem({
   onDelete,
   onArchive,
   onRename,
-{%- if cookiecutter.use_jwt %}
   onShare,
-{%- endif %}
 }: ConversationItemProps) {
   const t = useTranslations("chat");
   const [showMenu, setShowMenu] = useState(false);
@@ -66,10 +57,10 @@ function ConversationItem({
   return (
     <div
       className={cn(
-        "group relative flex items-center gap-2 rounded-lg px-3 py-3 text-sm transition-colors cursor-pointer min-h-[44px]",
+        "group relative flex min-h-[44px] cursor-pointer items-center gap-2 rounded-lg px-3 py-3 text-sm transition-colors",
         isActive
           ? "bg-secondary text-secondary-foreground"
-          : "text-muted-foreground hover:bg-secondary/50 hover:text-secondary-foreground"
+          : "text-muted-foreground hover:bg-secondary/50 hover:text-secondary-foreground",
       )}
       onClick={onSelect}
     >
@@ -84,7 +75,7 @@ function ConversationItem({
             if (e.key === "Enter") handleRename();
             if (e.key === "Escape") setIsEditing(false);
           }}
-          className="flex-1 bg-transparent outline-none text-foreground"
+          className="text-foreground flex-1 bg-transparent outline-none"
           autoFocus
           onClick={(e) => e.stopPropagation()}
         />
@@ -92,7 +83,10 @@ function ConversationItem({
         <div className="min-w-0 flex-1">
           <span className="block truncate">{displayTitle}</span>
           <span className="text-muted-foreground block truncate text-[10px]">
-            {new Date(conversation.updated_at || conversation.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+            {new Date(conversation.updated_at || conversation.created_at).toLocaleDateString(
+              undefined,
+              { month: "short", day: "numeric" },
+            )}
           </span>
         </div>
       )}
@@ -102,8 +96,8 @@ function ConversationItem({
           variant="ghost"
           size="sm"
           className={cn(
-            "h-8 w-8 p-0 opacity-0 group-hover:opacity-100 touch:opacity-100",
-            showMenu && "opacity-100"
+            "touch:opacity-100 h-8 w-8 p-0 opacity-0 group-hover:opacity-100",
+            showMenu && "opacity-100",
           )}
           onClick={(e) => {
             e.stopPropagation();
@@ -115,13 +109,10 @@ function ConversationItem({
 
         {showMenu && (
           <>
-            <div
-              className="fixed inset-0 z-10"
-              onClick={() => setShowMenu(false)}
-            />
-            <div className="absolute right-0 top-8 z-20 w-40 rounded-md border bg-popover shadow-lg">
+            <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
+            <div className="bg-popover absolute top-8 right-0 z-20 w-40 rounded-md border shadow-lg">
               <button
-                className="flex w-full items-center gap-2 px-3 py-3 text-sm hover:bg-secondary min-h-[44px]"
+                className="hover:bg-secondary flex min-h-[44px] w-full items-center gap-2 px-3 py-3 text-sm"
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsEditing(true);
@@ -131,9 +122,8 @@ function ConversationItem({
                 <Pencil className="h-4 w-4" />
                 {t("rename")}
               </button>
-{%- if cookiecutter.use_jwt %}
               <button
-                className="flex w-full items-center gap-2 px-3 py-3 text-sm hover:bg-secondary min-h-[44px]"
+                className="hover:bg-secondary flex min-h-[44px] w-full items-center gap-2 px-3 py-3 text-sm"
                 onClick={(e) => {
                   e.stopPropagation();
                   onShare();
@@ -143,9 +133,8 @@ function ConversationItem({
                 <Share2 className="h-4 w-4" />
                 {t("share")}
               </button>
-{%- endif %}
               <button
-                className="flex w-full items-center gap-2 px-3 py-3 text-sm hover:bg-secondary min-h-[44px]"
+                className="hover:bg-secondary flex min-h-[44px] w-full items-center gap-2 px-3 py-3 text-sm"
                 onClick={(e) => {
                   e.stopPropagation();
                   onArchive();
@@ -156,7 +145,7 @@ function ConversationItem({
                 {t("archive")}
               </button>
               <button
-                className="flex w-full items-center gap-2 px-3 py-3 text-sm text-destructive hover:bg-destructive/10 min-h-[44px]"
+                className="text-destructive hover:bg-destructive/10 flex min-h-[44px] w-full items-center gap-2 px-3 py-3 text-sm"
                 onClick={(e) => {
                   e.stopPropagation();
                   onDelete();
@@ -201,9 +190,7 @@ function ConversationList({
 }: ConversationListProps) {
   const t = useTranslations("chat");
   const activeConversations = (conversations ?? []).filter((c) => !c.is_archived);
-{%- if cookiecutter.use_jwt %}
   const [shareConversationId, setShareConversationId] = useState<string | null>(null);
-{%- endif %}
 
   const handleSelect = (id: string) => {
     onSelect(id);
@@ -221,7 +208,7 @@ function ConversationList({
         <Button
           variant="outline"
           size="sm"
-          className="w-full justify-start gap-2 h-10"
+          className="h-10 w-full justify-start gap-2"
           onClick={handleNewChat}
         >
           <MessageSquarePlus className="h-4 w-4" />
@@ -229,21 +216,26 @@ function ConversationList({
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 pb-3 scrollbar-thin" onScroll={(e) => {
-        const el = e.currentTarget;
-        if (!isLoading && el.scrollHeight - el.scrollTop - el.clientHeight < 100) {
-          onLoadMore?.();
-        }
-      }}>
+      <div
+        className="scrollbar-thin flex-1 overflow-y-auto px-3 pb-3"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          if (!isLoading && el.scrollHeight - el.scrollTop - el.clientHeight < 100) {
+            onLoadMore?.();
+          }
+        }}
+      >
         {isLoading && conversations.length === 0 ? (
           <div className="space-y-2 py-2">
-            {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-9 w-full rounded-md" />)}
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-9 w-full rounded-md" />
+            ))}
           </div>
         ) : activeConversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 text-center text-sm text-muted-foreground">
-            <MessageSquare className="h-8 w-8 mb-2 opacity-50" />
+          <div className="text-muted-foreground flex flex-col items-center justify-center py-8 text-center text-sm">
+            <MessageSquare className="mb-2 h-8 w-8 opacity-50" />
             <p>{t("noConversations")}</p>
-            <p className="text-xs mt-1">{t("startNewChat")}</p>
+            <p className="mt-1 text-xs">{t("startNewChat")}</p>
           </div>
         ) : (
           <div className="space-y-1">
@@ -256,16 +248,12 @@ function ConversationList({
                 onDelete={() => onDelete(conversation.id)}
                 onArchive={() => onArchive(conversation.id)}
                 onRename={(title) => onRename(conversation.id, title)}
-{%- if cookiecutter.use_jwt %}
                 onShare={() => setShareConversationId(conversation.id)}
-{%- endif %}
               />
             ))}
           </div>
         )}
       </div>
-
-{%- if cookiecutter.use_jwt %}
       {shareConversationId && (
         <ShareDialog
           conversationId={shareConversationId}
@@ -275,7 +263,6 @@ function ConversationList({
           }}
         />
       )}
-{%- endif %}
     </>
   );
 }
@@ -321,17 +308,18 @@ export function ConversationSidebar({ className }: ConversationSidebarProps) {
     return (
       <div
         className={cn(
-          "hidden md:flex flex-col items-center border-r bg-background py-4 w-12",
-          className
+          "bg-background hidden w-12 flex-col items-center border-r py-4 md:flex",
+          className,
         )}
       >
         <Button
           variant="ghost"
           size="sm"
-          className="h-10 w-10 p-0 mb-4"
+          className="mb-4 h-10 w-10 p-0"
           onClick={() => setIsCollapsed(false)}
+          aria-label="Expand conversations sidebar"
         >
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight className="h-4 w-4" aria-hidden />
         </Button>
         <Button
           variant="ghost"
@@ -339,8 +327,9 @@ export function ConversationSidebar({ className }: ConversationSidebarProps) {
           className="h-10 w-10 p-0"
           onClick={startNewChat}
           title="New Chat"
+          aria-label="New chat"
         >
-          <MessageSquarePlus className="h-4 w-4" />
+          <MessageSquarePlus className="h-4 w-4" aria-hidden />
         </Button>
       </div>
     );
@@ -349,20 +338,18 @@ export function ConversationSidebar({ className }: ConversationSidebarProps) {
   return (
     <>
       <aside
-        className={cn(
-          "hidden md:flex w-64 shrink-0 flex-col border-r bg-background",
-          className
-        )}
+        className={cn("bg-background hidden w-64 shrink-0 flex-col border-r md:flex", className)}
       >
-        <div className="flex items-center justify-between border-b px-4 py-3 h-12">
-          <h2 className="font-semibold text-sm">{t("conversations")}</h2>
+        <div className="flex h-12 items-center justify-between border-b px-4 py-3">
+          <h2 className="text-sm font-semibold">{t("conversations")}</h2>
           <Button
             variant="ghost"
             size="sm"
             className="h-8 w-8 p-0"
             onClick={() => setIsCollapsed(true)}
+            aria-label="Collapse conversations sidebar"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-4 w-4" aria-hidden />
           </Button>
         </div>
         <ConversationList {...listProps} />
@@ -374,7 +361,7 @@ export function ConversationSidebar({ className }: ConversationSidebarProps) {
             <SheetTitle>{t("conversations")}</SheetTitle>
             <SheetClose onClick={close} />
           </SheetHeader>
-          <div className="flex flex-col h-[calc(100%-48px)]">
+          <div className="flex h-[calc(100%-48px)] flex-col">
             <ConversationList {...listProps} onNavigate={close} />
           </div>
         </SheetContent>
@@ -382,6 +369,3 @@ export function ConversationSidebar({ className }: ConversationSidebarProps) {
     </>
   );
 }
-{%- else %}
-export {};
-{%- endif %}

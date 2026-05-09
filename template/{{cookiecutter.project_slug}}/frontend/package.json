@@ -59,7 +59,17 @@
     "sonner": "^1.7.0",
     "react-markdown": "^9.0.1",
     "remark-gfm": "^4.0.0",
-    "rehype-highlight": "^7.0.0"
+    "rehype-highlight": "^7.0.0",
+    "cmdk": "^1.1.1",
+    "date-fns": "^4.1.0"
+{%- if cookiecutter.enable_marketing_site %},
+    "@next/mdx": "^16.2.6",
+    "@mdx-js/loader": "^3.1.1",
+    "@mdx-js/react": "^3.1.1",
+    "@types/mdx": "^2.0.13",
+    "gray-matter": "^4.0.3",
+    "next-mdx-remote": "^6.0.0"
+{%- endif %}
   },
   "devDependencies": {
     "typescript": "^5.7.2",

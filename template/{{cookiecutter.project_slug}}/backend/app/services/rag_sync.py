@@ -109,13 +109,17 @@ class RAGSyncService:
             path,
         )
 {%- else %}
+        from app.worker.background import fire_and_forget
         from app.worker.background.rag import sync_local_in_background
 
-        await sync_local_in_background(
-            sync_log_id=str(sync_log.id),
-            collection_name=collection_name,
-            mode=mode,
-            path=path,
+        fire_and_forget(
+            sync_local_in_background(
+                sync_log_id=str(sync_log.id),
+                collection_name=collection_name,
+                mode=mode,
+                path=path,
+            ),
+            label="rag.sync_local",
         )
 {%- endif %}
         return sync_log

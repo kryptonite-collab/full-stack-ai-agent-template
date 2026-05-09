@@ -151,9 +151,13 @@ class SyncSourceService:
         pool = await get_arq_pool()
         await pool.enqueue_job("sync_single_source", source_id, str(sync_log.id))
 {%- else %}
+        from app.worker.background import fire_and_forget
         from app.worker.background.rag import sync_source_in_background
 
-        await sync_source_in_background(source_id, str(sync_log.id))
+        fire_and_forget(
+            sync_source_in_background(source_id, str(sync_log.id)),
+            label="rag.sync_source",
+        )
 {%- endif %}
         return sync_log
 

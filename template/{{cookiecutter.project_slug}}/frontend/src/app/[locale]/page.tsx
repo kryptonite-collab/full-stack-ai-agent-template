@@ -1,299 +1,436 @@
-import Link from "next/link";
+{% raw %}import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
-import { Badge, buttonVariants } from "@/components/ui";
-import { LandingNav } from "@/components/layout/landing-nav";
-import { APP_NAME, APP_DESCRIPTION, ROUTES, BACKEND_URL } from "@/lib/constants";
-{%- if cookiecutter.enable_newsletter_signup %}
-import { NewsletterSignup } from "@/components/marketing/newsletter-signup";
-{%- endif %}
-import { cn } from "@/lib/utils";
+
+import type { Locale } from "@/i18n";
+import { pageMetadata } from "@/lib/seo";
+
+import { CodePreview } from "@/components/marketing/code-preview";
+import { DataFlowDiagram } from "@/components/marketing/data-flow-diagram";
+import { FaqAccordion } from "@/components/marketing/faq-accordion";
+import { FeatureMockup } from "@/components/marketing/feature-mockup";
+import { FeatureSection } from "@/components/marketing/feature-section";
+import { FinalCta } from "@/components/marketing/final-cta";
 import {
-  Bot,
-  Zap,
-{%- if cookiecutter.enable_rag %}
-  Database,
-{%- endif %}
-{%- if cookiecutter.use_jwt or cookiecutter.use_api_key %}
-  Shield,
-{%- endif %}
-  LayoutDashboard,
-  Server,
-  ArrowRight,
-  ChevronRight,
-  ChevronDown,
-} from "lucide-react";
+  buildFooterColumns,
+  buildFooterLegal,
+  buildMarketingNavLinks,
+} from "@/components/marketing/footer-config";
+import { Hero } from "@/components/marketing/hero";
+import { Highlight } from "@/components/marketing/highlight";
+import { HowItWorks } from "@/components/marketing/how-it-works";
+import { LogosStrip } from "@/components/marketing/logos-strip";
+import { MarketingFooter } from "@/components/marketing/marketing-footer";
+import { Marquee } from "@/components/marketing/marquee";
+import { PillNav } from "@/components/marketing/pill-nav";
+import { PricingTeaser } from "@/components/marketing/pricing-teaser";
+import { Reveal } from "@/components/marketing/reveal";
+import { Section } from "@/components/marketing/section";
+import { TestimonialGrid } from "@/components/marketing/testimonial-grid";
+import { JsonLd } from "@/components/seo/json-ld";
+import { APP_NAME, ROUTES } from "@/lib/constants";
+import { faqSchema, organizationSchema, websiteSchema } from "@/lib/schema-org";
+
+const LOGOS = [
+  { brand: "google" as const, name: "Google" },
+  { brand: "microsoft" as const, name: "Microsoft" },
+  { brand: "stripe" as const, name: "Stripe" },
+  { brand: "notion" as const, name: "Notion" },
+  { brand: "linear" as const, name: "Linear" },
+  { brand: "vercel" as const, name: "Vercel" },
+  { brand: "figma" as const, name: "Figma" },
+  { brand: "loom" as const, name: "Loom" },
+];
+
+const MARQUEE_ITEMS = [
+  "Discover",
+  "Search",
+  "Summarize",
+  "Decide",
+  "Connect",
+  "Automate",
+  "Track",
+  "Improve",
+  "Onboard",
+  "Analyze",
+  "Translate",
+  "Draft",
+  "Schedule",
+  "Resolve",
+  "Forecast",
+  "Iterate",
+];
+
+const CODE_TABS = [
+  {
+    label: "REST",
+    filename: "POST /api/v1/chat",
+    language: "http",
+    code: `# Send a message — stream the answer back
+$ curl -N "https://api.your-app.com/v1/chat" \\
+    -H "Authorization: Bearer $API_KEY" \\
+    -H "Content-Type: application/json" \\
+    -d '{"message": "Summarize this quarter feedback"}'
+
+# data: {"delta": "Across 137 sessions..."}
+# data: {"delta": " top friction points..."}
+# data: [DONE]`,
+  },
+  {
+    label: "Python",
+    filename: "client.py",
+    language: "python",
+    code: `from your_app import Client
+
+client = Client(api_key="...")
+
+answer = client.chat(
+    message="Summarize this quarter feedback",
+    stream=True,
+)
+for chunk in answer:
+    print(chunk.delta, end="")`,
+  },
+  {
+    label: "Webhook",
+    filename: "Receive events on your endpoint",
+    language: "http",
+    code: `# Subscribe in dashboard, then receive:
+POST https://your-server.com/hooks
+Content-Type: application/json
+
+{
+  "event": "conversation.completed",
+  "data": {
+    "id": "conv_a1b2c3",
+    "summary": "User reported login bug",
+    "tags": ["bug", "auth"]
+  }
+}`,
+  },
+];
+
+const TESTIMONIALS = [
+  {
+    quote:
+      "Our team finds answers in seconds instead of digging through Notion and Google Drive. It paid for itself in the first week.",
+    name: "Marta Kowal",
+    title: "Head of Operations",
+    company: "Northwind Labs",
+  },
+  {
+    quote:
+      "We rolled it out to support, then sales picked it up, then everyone wanted access. It just keeps surprising us.",
+    name: "Daniel Reyes",
+    title: "VP Customer Success",
+    company: "Acme Studios",
+  },
+  {
+    quote:
+      "The chat is great — the analytics dashboard is what sold it to me. We finally see how the team is using AI.",
+    name: "Priya Anand",
+    title: "Chief of Staff",
+    company: "Helios",
+  },
+];
+
+const PLANS = [
+  {
+    name: "Starter",
+    price: "$0",
+    cadence: "/ month",
+    description: "For individuals exploring the product.",
+    features: ["100 messages / day", "1 connected data source", "Community support"],
+    cta: { label: "Start free", href: ROUTES.REGISTER },
+  },
+  {
+    name: "Pro",
+    price: "$29",
+    cadence: "/ user / month",
+    description: "For small teams getting real work done.",
+    features: [
+      "Unlimited messages",
+      "10 connected sources",
+      "Email + chat support",
+      "Workflow automations",
+    ],
+    cta: { label: "Start 14-day trial", href: ROUTES.REGISTER },
+    featured: true,
+    badge: "Most popular",
+  },
+  {
+    name: "Business",
+    price: "$99",
+    cadence: "/ user / month",
+    description: "For organisations rolling out across teams.",
+    features: [
+      "Everything in Pro",
+      "SSO + audit log",
+      "Role-based access control",
+      "Dedicated success manager",
+    ],
+    cta: { label: "Talk to sales", href: "/contact" },
+  },
+];
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: Locale }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "marketing.landing" });
+  return pageMetadata({
+    title: APP_NAME,
+    description: t("metaDescription"),
+    path: "/",
+    locale,
+  });
+}
 
 export default async function HomePage() {
-  const t = await getTranslations("landing");
+  const t = await getTranslations("marketing.landing");
+  const tNav = await getTranslations("marketing");
 
-  const features = [
-    {
-      icon: Bot,
-      title: t("featureAiChat"),
-      desc: t("featureAiChatDesc"),
-      href: ROUTES.CHAT,
-    },
-{%- if cookiecutter.enable_rag %}
-    {
-      icon: Database,
-      title: t("featureRag"),
-      desc: t("featureRagDesc"),
-      href: ROUTES.RAG,
-    },
-{%- endif %}
-{%- if cookiecutter.use_jwt or cookiecutter.use_api_key %}
-    {
-      icon: Shield,
-      title: t("featureAuth"),
-      desc: t("featureAuthDesc"),
-    },
-{%- endif %}
-    {
-      icon: LayoutDashboard,
-      title: t("featureDashboard"),
-      desc: t("featureDashboardDesc"),
-      href: ROUTES.DASHBOARD,
-    },
-    {
-      icon: Server,
-      title: t("featureApi"),
-      desc: t("featureApiDesc"),
-    },
-    {
-      icon: Zap,
-      title: t("featureRealtime"),
-      desc: t("featureRealtimeDesc"),
-    },
-  ];
+  const navLinks = buildMarketingNavLinks((k) => tNav(k));
+  const footerColumns = buildFooterColumns((k) => tNav(k));
+  const footerLegal = buildFooterLegal((k) => tNav(k));
 
-  const techItems = [
-    "Next.js 15", "React 19", "TypeScript", "Tailwind CSS", "FastAPI",
-{%- if cookiecutter.use_pydantic_ai %} "PydanticAI",{%- endif %}
-{%- if cookiecutter.use_langchain %} "LangChain",{%- endif %}
-{%- if cookiecutter.use_langgraph %} "LangGraph",{%- endif %}
-{%- if cookiecutter.use_crewai %} "CrewAI",{%- endif %}
-{%- if cookiecutter.use_sqlmodel %} "SQLModel",{%- elif cookiecutter.use_sqlalchemy %} "SQLAlchemy",{%- endif %}
-{%- if cookiecutter.use_postgresql %} "PostgreSQL",{%- elif cookiecutter.use_sqlite %} "SQLite",{%- elif cookiecutter.use_mongodb %} "MongoDB",{%- endif %}
-{%- if cookiecutter.enable_redis %} "Redis",{%- endif %}
-{%- if cookiecutter.use_celery %} "Celery",{%- elif cookiecutter.use_taskiq %} "Taskiq",{%- endif %}
-{%- if cookiecutter.use_milvus %} "Milvus",{%- elif cookiecutter.use_qdrant %} "Qdrant",{%- elif cookiecutter.use_chromadb %} "ChromaDB",{%- endif %}
-{%- if cookiecutter.enable_docker %} "Docker",{%- endif %}
-{%- if cookiecutter.use_traefik %} "Traefik",{%- endif %}
-{%- if cookiecutter.use_jwt %} "JWT Auth",{%- endif %}
-{%- if cookiecutter.enable_oauth %} "OAuth2",{%- endif %}
- "WebSockets",
-{%- if cookiecutter.enable_logfire %} "Logfire", "OpenTelemetry",{%- endif %}
-{%- if cookiecutter.enable_rag %} "PyMuPDF", "BM25",{%- endif %}
- "next-intl",
-    "Pydantic v2", "Alembic", "Zustand", "TanStack Query", "Vitest",
+  const heroStats = [
+    { value: "10k", label: t("hero.stat_teams") },
+    { value: "98%", label: t("hero.stat_speed") },
+    { value: "24/7", label: t("hero.stat_uptime") },
   ];
+  const faqItems = t.raw("faq.items") as { q: string; a: string }[];
 
   return (
-    <div className="bg-background min-h-screen">
-      <LandingNav
-        signInLabel={ t("signIn")}
-        getStartedLabel={ t("getStarted")}
-        dashboardLabel={ t("featureDashboard")}
+    <>
+      <JsonLd data={[organizationSchema(), websiteSchema(), faqSchema(faqItems)]} />
+
+      <PillNav
+        brand={APP_NAME}
+        links={navLinks}
+        ctaLabel={tNav("nav.getStarted")}
+        ctaHref={ROUTES.REGISTER}
+        secondaryCta={{ label: tNav("nav.signIn"), href: ROUTES.LOGIN }}
       />
 
-      <main>
-        {/* Hero */}
-        <section className="relative flex min-h-svh items-center justify-center overflow-hidden px-4 sm:px-6">
-          <div className="grid-bg pointer-events-none absolute inset-0" />
-          <div className="pointer-events-none absolute inset-0">
-            <div className="absolute left-1/2 top-[5%] h-[400px] w-[500px] -translate-x-1/2 rounded-full bg-brand/[0.12] blur-[120px] sm:h-[600px] sm:w-[800px] sm:blur-[200px]" />
-            <div className="absolute left-[30%] top-[15%] h-[300px] w-[350px] -translate-x-1/2 rounded-full bg-brand-muted/[0.08] blur-[100px] sm:h-[400px] sm:w-[500px] sm:blur-[160px]" />
+      <main id="main">
+      {/* Hero (dark) */}
+      <Hero
+        eyebrow={t("hero.eyebrow")}
+        title={
+          <>
+            {t("hero.titlePre")} <Highlight>{t("hero.titleHighlight")}</Highlight>{" "}
+            <em>{t("hero.titleEm")}</em>
+          </>
+        }
+        description={t("hero.description")}
+        primaryCta={{ label: t("hero.ctaPrimary"), href: ROUTES.REGISTER }}
+        secondaryCta={{ label: t("hero.ctaSecondary"), href: "/contact" }}
+        stats={heroStats}
+        theme="dark"
+      />
+
+      {/* Marquee */}
+      <Marquee items={MARQUEE_ITEMS} />
+
+      {/* Social proof (light) */}
+      <Section theme="light" padding="py-16 md:py-20">
+        <Reveal>
+          <LogosStrip label="Trusted by teams across industries" logos={LOGOS} />
+        </Reveal>
+      </Section>
+
+      {/* How it works (dark) */}
+      <Section theme="dark" id="how">
+        <div className="mb-14 max-w-2xl">
+          <div className="mb-5">
+            <span className="eyebrow-badge">How it works</span>
           </div>
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-background to-transparent" />
+          <h2 className="text-display-lg text-foreground [&_em]:font-accent [&_em]:font-normal [&_em]:italic">
+            Get started in <em>three steps.</em>
+          </h2>
+        </div>
+        <Reveal>
+          <HowItWorks />
+        </Reveal>
+      </Section>
 
-          <div className="relative mx-auto max-w-4xl text-center">
-            <div className="mb-8 inline-flex items-center rounded-full border border-brand/20 bg-brand/[0.06] px-4 py-1.5 text-sm text-muted-foreground">
-              <span className="mr-2 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
-              {APP_DESCRIPTION}
-            </div>
+      {/* Features — alternating */}
+      <Section theme="light" id="features">
+        <Reveal>
+          <FeatureSection
+            eyebrow="AI Chat"
+            title={
+              <>
+                Answers grounded in <em>your own work.</em>
+              </>
+            }
+            description="Ask questions in plain English and get answers with citations. Your assistant remembers context across conversations and adapts as your work evolves."
+            bullets={[
+              { title: "Cites sources, every time", body: "Every answer links back to the document, message, or ticket it came from." },
+              { title: "Multi-step reasoning", body: "Handles complex requests by breaking them into steps and acting on each." },
+              { title: "Works on web and mobile", body: "Identical experience across devices, plus integrations with Slack and Teams." },
+            ]}
+            visual={<FeatureMockup kind="agents" />}
+            cta={{ label: "Try the chat", href: ROUTES.CHAT }}
+            visualSide="right"
+          />
+        </Reveal>
+      </Section>
 
-            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
-              { t("heroTitle")}{" "}
-              <span className="bg-gradient-to-r from-brand to-brand-hover bg-clip-text text-transparent">
-                { t("heroHighlight")}
-              </span>
-              <br />
-              { t("heroTitleEnd")}
-            </h1>
+      <Section theme="dark">
+        <Reveal>
+          <FeatureSection
+            eyebrow="Connected knowledge"
+            title={
+              <>
+                All your data, <em>one assistant.</em>
+              </>
+            }
+            description="Sync from Google Drive, Notion, Slack, S3 and more. Files stay where they are — we keep them indexed and ready to answer questions in real time."
+            bullets={[
+              { title: "Always up to date", body: "Documents re-index automatically when they change at the source." },
+              { title: "Granular permissions", body: "Each user only sees what they're allowed to see. Nothing leaks." },
+              { title: "Built-in search", body: "Find anything across every connected source from a single search box." },
+            ]}
+            visual={<FeatureMockup kind="rag" />}
+            cta={{ label: "See connected sources", href: ROUTES.RAG }}
+            visualSide="left"
+          />
+        </Reveal>
+      </Section>
 
-            <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-              { t("heroSubtitle")}
-            </p>
-
-            <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-              <Link
-                href={ROUTES.{% if cookiecutter.use_jwt or cookiecutter.use_api_key %}REGISTER{% else %}DASHBOARD{% endif %}}
-                className="inline-flex items-center gap-2 rounded-full bg-brand px-8 py-3 text-base font-semibold text-brand-foreground transition-all hover:bg-brand-hover hover:shadow-lg"
-              >
-                { t("getStarted")}
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-{%- if cookiecutter.use_jwt or cookiecutter.use_api_key %}
-              <Link
-                href={ROUTES.LOGIN}
-                className="inline-flex items-center rounded-full border border-border bg-background/50 px-8 py-3 text-base font-semibold backdrop-blur-sm transition-all hover:border-border/80 hover:bg-background/80"
-              >
-                { t("signIn")}
-              </Link>
-{%- endif %}
-            </div>
+      {/* Data flow diagram (light) — sits between Connected Knowledge and Insights
+          to visually anchor the "your data → assistant" pipeline. */}
+      <Section theme="light" className="relative overflow-hidden">
+        <div aria-hidden className="bg-dots pointer-events-none absolute inset-0 -z-10" />
+        <div className="mb-14 max-w-2xl">
+          <div className="mb-5">
+            <span className="eyebrow-badge">How it connects</span>
           </div>
+          <h2 className="text-display-lg text-foreground [&_em]:font-accent [&_em]:font-normal [&_em]:italic">
+            Your data flows in. <em>Answers come back.</em>
+          </h2>
+          <p className="text-foreground/70 mt-5 max-w-xl text-lg leading-relaxed">
+            Source documents, conversations, and cloud files are continuously indexed.
+            Every answer is grounded in your own work — with citations back to the source.
+          </p>
+        </div>
+        <Reveal>
+          <DataFlowDiagram />
+        </Reveal>
+      </Section>
 
-          <a
-            href="#features"
-            className="scroll-arrow absolute bottom-8 left-1/2 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-colors hover:border-brand hover:text-brand"
-          >
-            <ChevronDown className="h-5 w-5" />
-          </a>
-        </section>
+      <Section theme="light">
+        <Reveal>
+          <FeatureSection
+            eyebrow="Insights"
+            title={
+              <>
+                Know what your team <em>is asking.</em>
+              </>
+            }
+            description="A live dashboard of every question asked, answer rated, and workflow run. Spot gaps in your knowledge base, identify your power users, and prove the ROI."
+            bullets={[
+              { title: "Usage by team or person", body: "Drill down to see who's getting value and where the questions concentrate." },
+              { title: "Quality feedback loop", body: "Users rate answers; you see what's working and what to improve." },
+              { title: "Export to your warehouse", body: "Stream events to BigQuery, Snowflake or your own tools via the API." },
+            ]}
+            visual={<FeatureMockup kind="billing" />}
+            cta={{ label: "Explore the dashboard", href: ROUTES.DASHBOARD }}
+            visualSide="right"
+          />
+        </Reveal>
+      </Section>
 
-        {/* Features */}
-        <section id="features" className="flex min-h-screen items-center px-4 py-20 sm:px-6 sm:py-28">
-          <div className="mx-auto w-full max-w-6xl">
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {features.map((feature) => {
-                const Icon = feature.icon;
-                return (
-                  <div key={feature.title} className="glass-card group rounded-xl p-6">
-                    <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-brand/10 transition-transform group-hover:scale-110">
-                      <Icon className="h-6 w-6 text-brand" />
-                    </div>
-                    <h3 className="mb-2 text-lg font-semibold">{feature.title}</h3>
-                    <p className="text-sm leading-relaxed text-muted-foreground">{feature.desc}</p>
-                    {feature.href && (
-                      <Link
-                        href={feature.href}
-                        className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-brand transition-colors hover:text-brand-hover"
-                      >
-                        { t("learnMore")}
-                        <ChevronRight className="h-3 w-3" />
-                      </Link>
-                    )}
-                  </div>
-                );
-              })}
+      {/* Code preview (dark) — for the developer audience */}
+      <Section theme="dark">
+        <div className="mb-14 grid gap-8 md:grid-cols-2 md:items-end">
+          <div>
+            <div className="mb-5">
+              <span className="eyebrow-badge">Built for developers too</span>
             </div>
-          </div>
-        </section>
-
-        {/* Tech Stack Marquee */}
-        <section className="border-t border-border/50 py-16 overflow-hidden">
-          <div className="mx-auto max-w-5xl px-4 text-center sm:px-6">
-            <h2 className="mb-10 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              { t("techStackTitle")}
+            <h2 className="text-display-lg text-foreground [&_em]:font-accent [&_em]:font-normal [&_em]:italic">
+              An API for <em>everything.</em>
             </h2>
           </div>
-          <div className="marquee-container">
-            <div className="marquee-track marquee-left">
-              {[...techItems, ...techItems].map((tech, i) => (
-                <span
-                  key={`${tech}-${i}`}
-                  className="inline-flex shrink-0 items-center rounded-lg border border-border/60 bg-card px-5 py-2.5 text-sm font-medium text-foreground/80"
-                >
-                  {tech}
-                </span>
-              ))}
-            </div>
+          <p className="text-foreground/70 max-w-md text-base leading-relaxed md:justify-self-end">
+            Embed the assistant in your own product, automate workflows, or pipe events to your
+            data warehouse. The dashboard is just one way to use it.
+          </p>
+        </div>
+        <Reveal>
+          <div className="mx-auto max-w-3xl">
+            <CodePreview tabs={CODE_TABS} />
           </div>
-        </section>
+        </Reveal>
+      </Section>
 
-        {/* CTA */}
-        <section className="px-4 py-20 sm:px-6">
-          <div className="relative mx-auto max-w-4xl overflow-hidden rounded-2xl border border-border/50 bg-card px-4 py-16 text-center sm:px-6">
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <div className="h-[300px] w-[500px] rounded-full bg-brand/[0.06] blur-[100px]" />
-            </div>
-            <div className="relative">
-              <h2 className="mb-4 text-3xl font-bold tracking-tight">
-                { t("ctaTitle")}
-              </h2>
-              <p className="mx-auto mb-8 max-w-lg text-muted-foreground">
-                { t("ctaSubtitle")}
-              </p>
-              <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
-                <Link
-                  href={ROUTES.{% if cookiecutter.use_jwt or cookiecutter.use_api_key %}REGISTER{% else %}DASHBOARD{% endif %}}
-                  className="inline-flex items-center gap-2 rounded-full bg-brand px-8 py-3 text-base font-semibold text-brand-foreground transition-all hover:bg-brand-hover hover:shadow-lg"
-                >
-                  { t("createAccount")}
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-                <a
-                  href={ `${BACKEND_URL}/docs`}
-                  className={cn(buttonVariants({ variant: "outline", size: "lg" }), "rounded-full px-8")}
-                >
-                  { t("exploreApi")}
-                </a>
-              </div>
-            </div>
+      {/* Testimonials (light) — grid of 3 */}
+      <Section theme="light">
+        <div className="mb-14 text-center">
+          <p className="eyebrow text-foreground/55 mb-4">Loved by teams</p>
+          <h2 className="text-display-lg text-foreground mx-auto max-w-2xl [&_em]:font-accent [&_em]:font-normal [&_em]:italic">
+            From the people who <em>use it daily.</em>
+          </h2>
+        </div>
+        <Reveal>
+          <TestimonialGrid items={TESTIMONIALS} />
+        </Reveal>
+      </Section>
+
+      {/* Pricing (dark) */}
+      <Section theme="dark" id="pricing">
+        <div className="mb-16 text-center">
+          <div className="mb-5">
+            <span className="eyebrow-badge">Pricing</span>
           </div>
-        </section>
+          <h2 className="text-display-lg text-foreground mx-auto max-w-2xl [&_em]:font-accent [&_em]:font-normal [&_em]:italic">
+            Pricing that <em>scales with you.</em>
+          </h2>
+        </div>
+        <Reveal>
+          <PricingTeaser plans={PLANS} fullPricingHref={ROUTES.PRICING} />
+        </Reveal>
+      </Section>
+
+      {/* FAQ (light) */}
+      <Section theme="light" id="faq">
+        <div className="mb-14 text-center">
+          <p className="eyebrow text-foreground/55 mb-4">{t("faq.eyebrow")}</p>
+          <h2 className="text-display-lg text-foreground">{t("faq.title")}</h2>
+        </div>
+        <Reveal>
+          <FaqAccordion items={faqItems.map((it) => ({ ...it, q: it.q.replace("{appName}", APP_NAME) }))} />
+        </Reveal>
+      </Section>
+
+      {/* Final CTA */}
+      <Section theme="light" padding="pb-24 md:pb-32">
+        <Reveal>
+          <FinalCta
+            title={
+              <>
+                {t("finalCta.titlePre")} <em>{t("finalCta.titleEm")}</em>
+              </>
+            }
+            description={t("finalCta.description")}
+            primary={{ label: t("finalCta.primary"), href: ROUTES.REGISTER }}
+            secondary={{ label: t("finalCta.secondary"), href: "/contact" }}
+          />
+        </Reveal>
+      </Section>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-border/50">
-        <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-          <div className="flex flex-col gap-8 sm:flex-row sm:justify-between">
-            <div className="max-w-xs">
-              <p className="text-lg font-bold tracking-tight">{APP_NAME}</p>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                { t("footerDesc")}
-              </p>
-            </div>
-            <div className="flex gap-16">
-              <div>
-                <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  { t("footerProduct")}
-                </h4>
-                <ul className="space-y-2">
-                  <li><Link href={ROUTES.DASHBOARD} className="text-sm text-muted-foreground transition-colors hover:text-foreground">Dashboard</Link></li>
-                  <li><Link href={ROUTES.CHAT} className="text-sm text-muted-foreground transition-colors hover:text-foreground">Chat</Link></li>
-{%- if cookiecutter.enable_rag %}
-                  <li><Link href={ROUTES.RAG} className="text-sm text-muted-foreground transition-colors hover:text-foreground">Knowledge Base</Link></li>
-{%- endif %}
-{%- if cookiecutter.enable_billing %}
-                  <li><Link href={ROUTES.PRICING} className="text-sm text-muted-foreground transition-colors hover:text-foreground">Pricing</Link></li>
-{%- endif %}
-                </ul>
-              </div>
-              <div>
-                <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  { t("footerResources")}
-                </h4>
-                <ul className="space-y-2">
-                  <li><a href={ `${BACKEND_URL}/docs`} className="text-sm text-muted-foreground transition-colors hover:text-foreground">API Docs</a></li>
-{%- if cookiecutter.use_jwt or cookiecutter.use_api_key %}
-                  <li><Link href={ROUTES.LOGIN} className="text-sm text-muted-foreground transition-colors hover:text-foreground">Sign In</Link></li>
-{%- endif %}
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-{%- if cookiecutter.enable_newsletter_signup %}
-        <div className="border-t border-border/50">
-          <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-            <div className="flex flex-col items-center gap-4 text-center">
-              <p className="text-sm font-semibold">Stay in the loop</p>
-              <p className="text-sm text-muted-foreground">Get updates on new features and releases.</p>
-              <NewsletterSignup />
-            </div>
-          </div>
-        </div>
-{%- endif %}
-        <div className="border-t border-border/50">
-          <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
-            <p className="text-center text-xs text-muted-foreground">
-              &copy; {new Date().getFullYear()} {APP_NAME}. { t("copyright")}
-            </p>
-          </div>
-        </div>
-      </footer>
-    </div>
+      <MarketingFooter
+        brand={APP_NAME}
+        tagline={tNav("footer.tagline")}
+        operationalLabel={tNav("footer.operational")}
+        columns={footerColumns}
+        legal={footerLegal}
+      />
+    </>
   );
 }
+{% endraw %}

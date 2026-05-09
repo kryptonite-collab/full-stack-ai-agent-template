@@ -5,13 +5,14 @@ import { MessageItem } from "./message-item";
 
 interface MessageListProps {
   messages: ChatMessage[];
+  onRegenerate?: (messageId: string) => void;
 }
 
-export function MessageList({ messages }: MessageListProps) {
+export function MessageList({ messages, onRegenerate }: MessageListProps) {
   // Calculate group positions for timeline connector
   const getGroupPosition = (
     message: ChatMessage,
-    index: number
+    index: number,
   ): "first" | "middle" | "last" | "single" | undefined => {
     if (!message.groupId) return undefined;
 
@@ -24,6 +25,15 @@ export function MessageList({ messages }: MessageListProps) {
     return "middle";
   };
 
+  // Only allow regenerating the most recent assistant message — older ones
+  // would diverge the transcript in a confusing way.
+  const lastAssistantIndex = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === "assistant") return i;
+    }
+    return -1;
+  })();
+
   return (
     <div className="space-y-0">
       {messages.map((message, index) => (
@@ -31,6 +41,11 @@ export function MessageList({ messages }: MessageListProps) {
           key={message.id}
           message={message}
           groupPosition={getGroupPosition(message, index)}
+          onRegenerate={
+            onRegenerate && index === lastAssistantIndex && !message.isStreaming
+              ? () => onRegenerate(message.id)
+              : undefined
+          }
         />
       ))}
     </div>

@@ -410,42 +410,67 @@ class LiteParseParser(BaseDocumentParser):
 
     Uses LiteParse (from LlamaIndex) for layout-aware text extraction.
     Preserves spatial relationships (tables as ASCII grids) instead of
-    converting to markdown. Built-in OCR via Tesseract.js for scanned pages.
+    converting to markdown. Built-in OCR via Tesseract.js for scanned pages,
+    or pluggable HTTP OCR servers (EasyOCR / PaddleOCR / your own).
+
+    Production note: pre-install the Node.js CLI in your Docker image
+    (`RUN npm install -g @llamaindex/liteparse`). The Python wrapper will
+    auto-install on first parse otherwise -- 30-60 s of cold-start latency
+    blocking the request.
 
     Requires: pip install liteparse && npm i -g @llamaindex/liteparse
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        enable_ocr: bool = True,
+        ocr_server_url: str | None = None,
+        ocr_language: str = "en",
+        timeout_seconds: float = 600.0,
+    ) -> None:
         from liteparse import LiteParse
         self.parser = LiteParse()
+        self.enable_ocr = enable_ocr
+        self.ocr_server_url = ocr_server_url
+        self.ocr_language = ocr_language
+        self.timeout_seconds = timeout_seconds
 
     async def parse(self, filepath: Path) -> Document:
         """Parse a document using LiteParse.
 
-        LiteParse returns layout-aware text. If the result has per-page data
-        it's used directly; otherwise full text is split on form-feed chars.
+        Catches LiteParse exceptions and re-raises as RuntimeError so callers
+        can surface them as a structured ingestion failure instead of an
+        opaque subprocess error.
         """
         import asyncio
 
-        # LiteParse Python wrapper is synchronous -- run in thread
-        result = await asyncio.to_thread(self.parser.parse, str(filepath))
+        from liteparse.types import ParseError  # type: ignore[import-not-found]
 
-        pages: list[DocumentPage] = []
+        try:
+            # LiteParse Python wrapper is synchronous -- run in thread
+            result = await asyncio.to_thread(
+                self.parser.parse,
+                str(filepath),
+                ocr_enabled=self.enable_ocr,
+                ocr_server_url=self.ocr_server_url,
+                ocr_language=self.ocr_language,
+                timeout=self.timeout_seconds,
+            )
+        except FileNotFoundError as e:
+            raise RuntimeError(f"LiteParse: file not found: {filepath}") from e
+        except TimeoutError as e:
+            raise RuntimeError(
+                f"LiteParse: parse timed out after {self.timeout_seconds}s for {filepath.name}"
+            ) from e
+        except ParseError as e:
+            raise RuntimeError(f"LiteParse: parse failed for {filepath.name}: {e}") from e
 
-        # Try per-page output first
-        if hasattr(result, "pages") and result.pages:
-            for i, page in enumerate(result.pages):
-                text = page.text if hasattr(page, "text") else str(page)
-                if text.strip():
-                    pages.append(DocumentPage(page_num=i + 1, content=text))
-        else:
-            # Fallback: split full text on form-feed (\f) as page separator
-            full_text = result.text if hasattr(result, "text") else str(result)
-            page_texts = full_text.split("\f") if "\f" in full_text else [full_text]
-            for i, text in enumerate(page_texts):
-                if text.strip():
-                    pages.append(DocumentPage(page_num=i + 1, content=text.strip()))
-
+        pages: list[DocumentPage] = [
+            DocumentPage(page_num=page.pageNum, content=page.text)
+            for page in result.pages
+            if page.text.strip()
+        ]
         return Document(
             pages=pages,
             metadata=self.get_document_metadata(filepath),
@@ -465,7 +490,13 @@ class PdfParserFactory:
                 tier=settings.pdf_parser.tier,
             )
         elif parser_name == "liteparse":
-            return LiteParseParser()
+            pdf = settings.pdf_parser if settings else None
+            return LiteParseParser(
+                enable_ocr=settings.enable_ocr if settings else True,
+                ocr_server_url=getattr(pdf, "liteparse_ocr_server_url", None),
+                ocr_language=getattr(pdf, "liteparse_ocr_language", "en"),
+                timeout_seconds=getattr(pdf, "liteparse_timeout_seconds", 600.0),
+            )
         else:
             return PyMuPDFParser(
                 enable_ocr=settings.enable_ocr if settings else False,
@@ -758,41 +789,60 @@ class LiteParseParser(BaseDocumentParser):
 
     Uses LiteParse (from LlamaIndex) for layout-aware text extraction.
     Preserves spatial relationships (tables as ASCII grids) instead of
-    converting to markdown. Built-in OCR via Tesseract.js for scanned pages.
+    converting to markdown. Built-in OCR via Tesseract.js for scanned pages,
+    or pluggable HTTP OCR servers (EasyOCR / PaddleOCR / your own).
+
+    Production note: pre-install the Node.js CLI in your Docker image
+    (`RUN npm install -g @llamaindex/liteparse`). The Python wrapper will
+    auto-install on first parse otherwise — 30-60 s of cold-start latency
+    blocking the request.
 
     Requires: pip install liteparse && npm i -g @llamaindex/liteparse
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        enable_ocr: bool = True,
+        ocr_server_url: str | None = None,
+        ocr_language: str = "en",
+        timeout_seconds: float = 600.0,
+    ) -> None:
         self.parser = LiteParse()
+        self.enable_ocr = enable_ocr
+        self.ocr_server_url = ocr_server_url
+        self.ocr_language = ocr_language
+        self.timeout_seconds = timeout_seconds
 
     async def parse(self, filepath: Path) -> Document:
-        """Parse a document using LiteParse.
-
-        LiteParse returns layout-aware text. If the result has per-page data
-        it's used directly; otherwise full text is split on form-feed chars.
-        """
+        """Parse a document using LiteParse with OCR + timeout configured."""
         import asyncio
 
-        # LiteParse Python wrapper is synchronous — run in thread
-        result = await asyncio.to_thread(self.parser.parse, str(filepath))
+        from liteparse.types import ParseError  # type: ignore[import-not-found]
 
-        pages: list[DocumentPage] = []
+        try:
+            result = await asyncio.to_thread(
+                self.parser.parse,
+                str(filepath),
+                ocr_enabled=self.enable_ocr,
+                ocr_server_url=self.ocr_server_url,
+                ocr_language=self.ocr_language,
+                timeout=self.timeout_seconds,
+            )
+        except FileNotFoundError as e:
+            raise RuntimeError(f"LiteParse: file not found: {filepath}") from e
+        except TimeoutError as e:
+            raise RuntimeError(
+                f"LiteParse: parse timed out after {self.timeout_seconds}s for {filepath.name}"
+            ) from e
+        except ParseError as e:
+            raise RuntimeError(f"LiteParse: parse failed for {filepath.name}: {e}") from e
 
-        # Try per-page output first
-        if hasattr(result, "pages") and result.pages:
-            for i, page in enumerate(result.pages):
-                text = page.text if hasattr(page, "text") else str(page)
-                if text.strip():
-                    pages.append(DocumentPage(page_num=i + 1, content=text))
-        else:
-            # Fallback: split full text on form-feed (\f) as page separator
-            full_text = result.text if hasattr(result, "text") else str(result)
-            page_texts = full_text.split("\f") if "\f" in full_text else [full_text]
-            for i, text in enumerate(page_texts):
-                if text.strip():
-                    pages.append(DocumentPage(page_num=i + 1, content=text.strip()))
-
+        pages: list[DocumentPage] = [
+            DocumentPage(page_num=page.pageNum, content=page.text)
+            for page in result.pages
+            if page.text.strip()
+        ]
         return Document(
             pages=pages,
             metadata=self.get_document_metadata(filepath),
@@ -853,7 +903,12 @@ class DocumentProcessor:
         self.llamaparse_parser = LlamaParseParser(api_key=settings.pdf_parser.api_key, tier=settings.pdf_parser.tier)
         {%- elif cookiecutter.use_liteparse %}
         # LiteParse handles PDFs with layout-aware text extraction
-        self.liteparse_parser = LiteParseParser()
+        self.liteparse_parser = LiteParseParser(
+            enable_ocr=settings.enable_ocr,
+            ocr_server_url=getattr(settings.pdf_parser, "liteparse_ocr_server_url", None),
+            ocr_language=getattr(settings.pdf_parser, "liteparse_ocr_language", "en"),
+            timeout_seconds=getattr(settings.pdf_parser, "liteparse_timeout_seconds", 600.0),
+        )
         self.docx_parser = DocxDocumentParser()
         {%- else %}
         self.docx_parser = DocxDocumentParser()

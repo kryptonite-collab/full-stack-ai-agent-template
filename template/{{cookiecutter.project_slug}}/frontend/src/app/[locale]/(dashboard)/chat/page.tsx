@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { ChatContainer, ConversationSidebar } from "@/components/chat";
 import { useConversationStore } from "@/stores";
-{%- if cookiecutter.enable_teams and cookiecutter.enable_rag and cookiecutter.use_jwt %}
+{%- if cookiecutter.enable_teams and cookiecutter.enable_rag %}
 import { KBPanel } from "@/components/chat";
 {%- endif %}
 
@@ -20,14 +20,14 @@ export default function ChatPage() {
   }, [searchParams, setCurrentConversationId]);
 
   return (
-    <div className="flex min-h-0 flex-1 -m-3 sm:-m-6">
+    <div className="-m-3 flex min-h-0 flex-1 sm:-m-6">
       <ConversationSidebar />
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex min-h-0 flex-1">
-          <div className="flex-1 min-w-0">
+          <div className="min-w-0 flex-1">
             <ChatContainer />
           </div>
-{%- if cookiecutter.enable_teams and cookiecutter.enable_rag and cookiecutter.use_jwt %}
+{%- if cookiecutter.enable_teams and cookiecutter.enable_rag %}
           <KBPanel />
 {%- endif %}
         </div>

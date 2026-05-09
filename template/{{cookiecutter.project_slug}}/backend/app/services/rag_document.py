@@ -165,14 +165,18 @@ class RAGDocumentService:
             replace,
         )
 {%- else %}
+        from app.worker.background import fire_and_forget
         from app.worker.background.rag import ingest_document_in_background
 
-        await ingest_document_in_background(
-            rag_document_id=str(doc_id),
-            collection_name=collection_name,
-            filepath=tmp_path,
-            source_path=filename,
-            replace=replace,
+        fire_and_forget(
+            ingest_document_in_background(
+                rag_document_id=str(doc_id),
+                collection_name=collection_name,
+                filepath=tmp_path,
+                source_path=filename,
+                replace=replace,
+            ),
+            label="rag.ingest_document",
         )
 {%- endif %}
 

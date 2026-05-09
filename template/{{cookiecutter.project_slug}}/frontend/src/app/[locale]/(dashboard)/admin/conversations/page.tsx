@@ -1,5 +1,3 @@
-{%- if cookiecutter.use_jwt and cookiecutter.use_database %}
-{% raw %}
 "use client";
 
 import { useEffect, useState } from "react";
@@ -90,35 +88,30 @@ export default function AdminConversationsPage() {
             variant="ghost"
             size="icon"
             onClick={() => setSelectedConversation(null)}
+            aria-label="Back to conversation list"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-4 w-4" aria-hidden />
           </Button>
           <div>
-            <h2 className="font-semibold">
-              {selectedConversation.title || t("untitled")}
-            </h2>
-            <p className="text-xs text-muted-foreground">
+            <h2 className="font-semibold">{selectedConversation.title || t("untitled")}</h2>
+            <p className="text-muted-foreground text-xs">
               {selectedConversation.messages.length} {t("readOnly")}
             </p>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 space-y-4 overflow-y-auto p-4">
           {selectedConversation.messages.map((msg) => (
             <div
               key={msg.id}
-              className={`flex ${
-                msg.role === "user" ? "justify-end" : "justify-start"
-              }`}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
                 className={`max-w-[80%] rounded-lg px-4 py-2 ${
-                  msg.role === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted"
+                  msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
                 }`}
               >
                 <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                <p className="text-xs opacity-60 mt-1">
+                <p className="mt-1 text-xs opacity-60">
                   {new Date(msg.created_at).toLocaleString()}
                 </p>
               </div>
@@ -136,9 +129,9 @@ export default function AdminConversationsPage() {
         <p className="text-muted-foreground">{t("conversationsDesc")}</p>
       </div>
 
-      <div className="flex items-center gap-4 mb-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <div className="mb-4 flex items-center gap-4">
+        <div className="relative max-w-sm flex-1">
+          <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
           <Input
             placeholder={t("search")}
             value={search}
@@ -147,11 +140,7 @@ export default function AdminConversationsPage() {
           />
         </div>
         {selectedUserId && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setSelectedUserId(null)}
-          >
+          <Button variant="outline" size="sm" onClick={() => setSelectedUserId(null)}>
             {t("clearUserFilter")}
           </Button>
         )}
@@ -194,16 +183,12 @@ export default function AdminConversationsPage() {
                   ))
                 : conversations.map((conv) => (
                     <TableRow key={conv.id}>
-                      <TableCell className="font-medium">
-                        {conv.title || t("untitled")}
-                      </TableCell>
+                      <TableCell className="font-medium">{conv.title || t("untitled")}</TableCell>
                       <TableCell className="text-muted-foreground">
                         {conv.user_email || "—"}
                       </TableCell>
                       <TableCell>{conv.message_count}</TableCell>
-                      <TableCell>
-                        {new Date(conv.created_at).toLocaleDateString()}
-                      </TableCell>
+                      <TableCell>{new Date(conv.created_at).toLocaleDateString()}</TableCell>
                       <TableCell>
                         {conv.is_archived ? (
                           <Badge variant="secondary">Archived</Badge>
@@ -224,7 +209,7 @@ export default function AdminConversationsPage() {
                   ))}
               {!isLoading && conversations.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-muted-foreground py-8 text-center">
                     {t("noConversations")}
                   </TableCell>
                 </TableRow>
@@ -233,7 +218,7 @@ export default function AdminConversationsPage() {
           </Table>
           {convTotalPages > 1 && (
             <div className="flex items-center justify-between border-t px-4 py-3">
-              <span className="text-sm text-muted-foreground">
+              <span className="text-muted-foreground text-sm">
                 Page {convPage + 1} of {convTotalPages} &middot; {conversationsTotal} total
               </span>
               <div className="flex items-center gap-1">
@@ -293,15 +278,9 @@ export default function AdminConversationsPage() {
                           <Badge variant="destructive">Inactive</Badge>
                         )}
                       </TableCell>
+                      <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>
                       <TableCell>
-                        {new Date(user.created_at).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleUserClick(user)}
-                        >
+                        <Button variant="ghost" size="sm" onClick={() => handleUserClick(user)}>
                           {t("viewChats")}
                         </Button>
                       </TableCell>
@@ -309,7 +288,7 @@ export default function AdminConversationsPage() {
                   ))}
               {!isLoading && users.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-muted-foreground py-8 text-center">
                     {t("noUsers")}
                   </TableCell>
                 </TableRow>
@@ -318,7 +297,7 @@ export default function AdminConversationsPage() {
           </Table>
           {usersTotalPages > 1 && (
             <div className="flex items-center justify-between border-t px-4 py-3">
-              <span className="text-sm text-muted-foreground">
+              <span className="text-muted-foreground text-sm">
                 Page {usersPage + 1} of {usersTotalPages} &middot; {usersTotal} total
               </span>
               <div className="flex items-center gap-1">
@@ -346,9 +325,3 @@ export default function AdminConversationsPage() {
     </div>
   );
 }
-{% endraw %}
-{%- else %}
-export default function AdminConversationsPage() {
-  return <div>Admin conversations require JWT authentication.</div>;
-}
-{%- endif %}

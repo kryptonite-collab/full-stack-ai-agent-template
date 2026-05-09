@@ -319,10 +319,9 @@ def new(output: Path | None, no_input: bool, name: str | None, minimal: bool) ->
     help="Free trial length in days (default: 14)",
 )
 @click.option(
-    "--trial-requires-card",
-    is_flag=True,
-    default=False,
-    help="Require a payment card to start a trial",
+    "--trial-requires-card/--no-trial-requires-card",
+    default=True,
+    help="Require a payment card to start a trial (default: yes; pass --no-trial-requires-card to allow card-free trials)",
 )
 @click.option("--email", is_flag=True, default=False, help="Enable transactional email")
 @click.option(

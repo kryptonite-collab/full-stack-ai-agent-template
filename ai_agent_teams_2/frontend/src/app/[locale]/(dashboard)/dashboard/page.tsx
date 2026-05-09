@@ -2,26 +2,50 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Card, CardHeader, CardTitle, CardContent, Button, Skeleton } from "@/components/ui";
-import { apiClient } from "@/lib/api-client";
-import { useAuth } from "@/hooks";
-import { ROUTES, BACKEND_URL } from "@/lib/constants";
-import type { HealthResponse } from "@/types";
 import {
-  CheckCircle,
-  XCircle,
-  User,
-  ArrowRight,
-  MessageSquare,
-  Database,
-  Settings,
   Activity,
-  ExternalLink,
-  BookOpen,
-  Star,
+  CheckCircle,
+  CreditCard,
+  Database,
   List,
+  MessageSquare,
+  Search,
+  Sparkles,
+  Star,
+  XCircle,
 } from "lucide-react";
+
+import { OnboardingBanner } from "@/components/dashboard/onboarding-banner";
+import { QuickActions } from "@/components/dashboard/quick-actions";
+import { RecentActivity } from "@/components/dashboard/recent-activity";
+import { StatCard } from "@/components/dashboard/stat-card";
+import { UsageTimeline } from "@/components/dashboard/usage-timeline";
+import { useAuth } from "@/hooks";
+import { apiClient } from "@/lib/api-client";
+import { ROUTES } from "@/lib/constants";
 import { listCollections, getCollectionInfo } from "@/lib/rag-api";
+import type { HealthResponse } from "@/types";
+
+interface CreditBalance {
+  balance: number;
+  threshold: number;
+}
+
+interface UsageBucket {
+  day: string;
+  credits_charged: number;
+  total_calls: number;
+}
+
+interface UsageTimelineRead {
+  buckets: UsageBucket[];
+  days: number;
+}
+
+interface ConversationsResponse {
+  total?: number;
+  items: Array<{ id: string }>;
+}
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -30,32 +54,49 @@ function getGreeting(): string {
   return "Good evening";
 }
 
+function pctDelta(current: number[], prior: number[]): number | undefined {
+  const cur = current.reduce((a, b) => a + b, 0);
+  const prev = prior.reduce((a, b) => a + b, 0);
+  if (prev === 0) return cur > 0 ? 100 : 0;
+  return ((cur - prev) / prev) * 100;
+}
+
 export default function DashboardPage() {
   const { user } = useAuth();
   const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [healthLoading, setHealthLoading] = useState(true);
   const [healthError, setHealthError] = useState(false);
+  const [credits, setCredits] = useState<CreditBalance | null>(null);
+  const [creditsLoading, setCreditsLoading] = useState(true);
+  const [conversations, setConversations] = useState<{ total: number } | null>(null);
+  const [convLoading, setConvLoading] = useState(true);
   const [ragStats, setRagStats] = useState<{ collections: number; vectors: number } | null>(null);
+  const [timeline, setTimeline] = useState<UsageBucket[] | null>(null);
 
   useEffect(() => {
-    const checkHealth = async () => {
-      try {
-        const data = await apiClient.get<HealthResponse>("/health");
-        setHealth(data);
+    apiClient
+      .get<HealthResponse>("/health")
+      .then((d) => {
+        setHealth(d);
         setHealthError(false);
-      } catch {
-        setHealthError(true);
-      } finally {
-        setHealthLoading(false);
-      }
-    };
+      })
+      .catch(() => setHealthError(true));
 
-    checkHealth();
-    const loadRagStats = async () => {
-      try {
-        const data = await listCollections();
+    apiClient
+      .get<CreditBalance>("/billing/me/credits")
+      .then(setCredits)
+      .catch(() => setCredits(null))
+      .finally(() => setCreditsLoading(false));
+
+    apiClient
+      .get<ConversationsResponse>("/conversations?limit=1")
+      .then((d) => setConversations({ total: d.total ?? d.items?.length ?? 0 }))
+      .catch(() => setConversations({ total: 0 }))
+      .finally(() => setConvLoading(false));
+
+    listCollections()
+      .then(async (list) => {
         let totalVectors = 0;
-        for (const name of data.items) {
+        for (const name of list.items) {
           try {
             const info = await getCollectionInfo(name);
             totalVectors += info.total_vectors;
@@ -63,203 +104,207 @@ export default function DashboardPage() {
             /* ignore */
           }
         }
-        setRagStats({ collections: data.items.length, vectors: totalVectors });
-      } catch (err) {
-        console.error("Failed to load RAG stats:", err);
-        setRagStats({ collections: 0, vectors: 0 });
-      }
-    };
-    loadRagStats();
+        setRagStats({ collections: list.items.length, vectors: totalVectors });
+      })
+      .catch(() => setRagStats({ collections: 0, vectors: 0 }));
+
+    apiClient
+      .get<UsageTimelineRead>("/billing/me/credits/usage/timeline?days=14")
+      .then((d) => setTimeline(d.buckets))
+      .catch(() => setTimeline([]));
   }, []);
+
+  // Derived sparklines + deltas (last 7d vs prior 7d)
+  const creditsSpark = (timeline ?? []).slice(-7).map((b) => b.credits_charged);
+  const callsSpark = (timeline ?? []).slice(-7).map((b) => b.total_calls);
+  const creditsDelta = timeline
+    ? pctDelta(timeline.slice(-7).map((b) => b.credits_charged), timeline.slice(-14, -7).map((b) => b.credits_charged))
+    : undefined;
+  const callsDelta = timeline
+    ? pctDelta(timeline.slice(-7).map((b) => b.total_calls), timeline.slice(-14, -7).map((b) => b.total_calls))
+    : undefined;
 
   return (
     <div className="space-y-6 pb-8">
-      <div>
-        <h1 className="text-2xl font-bold sm:text-3xl">
-          {getGreeting()}
-          {user?.name ? `, ${user.name}` : user?.email ? `, ${user.email.split("@")[0]}` : ""}
-        </h1>
-        <p className="text-muted-foreground text-sm sm:text-base">
-          Here&apos;s what&apos;s happening with your project.
-        </p>
-      </div>
+      <OnboardingBanner />
 
-      {/* Stats cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">API Status</CardTitle>
-            {healthLoading ? (
-              <Skeleton className="h-4 w-4 rounded-full" />
-            ) : healthError ? (
-              <XCircle className="text-destructive h-4 w-4" />
-            ) : (
-              <CheckCircle className="h-4 w-4 text-green-500" />
-            )}
-          </CardHeader>
-          <CardContent>
-            {healthLoading ? (
-              <Skeleton className="h-8 w-16 rounded" />
-            ) : (
-              <p className="text-2xl font-bold">
-                {healthError ? "Offline" : health?.status || "OK"}
-              </p>
-            )}
-            {health?.version && <p className="text-muted-foreground text-xs">v{health.version}</p>}
-          </CardContent>
-        </Card>
+      {/* Header */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-foreground/55 font-mono text-[11px] uppercase tracking-wider">
+            Dashboard
+          </p>
+          <h1 className="font-display text-foreground mt-1 text-3xl font-bold tracking-tight sm:text-4xl">
+            {getGreeting()}
+            {user?.name
+              ? `, ${user.name.split(" ")[0]}`
+              : user?.email
+                ? `, ${user.email.split("@")[0]}`
+                : ""}
+            <span className="text-foreground/30">.</span>
+          </h1>
+          <p className="text-foreground/65 mt-1 text-sm">
+            Here&apos;s what&apos;s happening with your workspace.
+          </p>
+        </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">Account</CardTitle>
-            <User className="text-muted-foreground h-4 w-4" />
-          </CardHeader>
-          <CardContent>
-            {user?.email ? (
-              <p className="truncate text-sm font-medium">{user.email}</p>
-            ) : (
-              <Skeleton className="h-5 w-40 rounded" />
-            )}
-            <p className="text-muted-foreground text-xs">
-              {user?.role === "admin" ? "Admin" : "User"}
-              {user?.created_at && ` · Since ${new Date(user.created_at).toLocaleDateString()}`}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">AI Agent</CardTitle>
-            <Activity className="text-muted-foreground h-4 w-4" />
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">pydantic_ai</p>
-            <p className="text-muted-foreground text-xs">openrouter provider</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">
-              Knowledge Base
-            </CardTitle>
-            <Database className="text-muted-foreground h-4 w-4" />
-          </CardHeader>
-          <CardContent>
-            {!ragStats ? (
-              <Skeleton className="h-8 w-16 rounded" />
-            ) : (
-              <p className="text-2xl font-bold">{ragStats.vectors.toLocaleString()}</p>
-            )}
-            <p className="text-muted-foreground text-xs">
-              vectors in {ragStats?.collections ?? 0} collection
-              {ragStats?.collections !== 1 ? "s" : ""}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Quick actions */}
-      <div>
-        <h2 className="mb-3 text-lg font-semibold">Quick Actions</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Link href={ROUTES.CHAT}>
-            <Card className="hover:bg-accent cursor-pointer transition-colors">
-              <CardContent className="flex items-center gap-3 p-4">
-                <MessageSquare className="text-primary h-5 w-5" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Start a Chat</p>
-                  <p className="text-muted-foreground text-xs">Talk to the AI agent</p>
-                </div>
-                <ArrowRight className="text-muted-foreground h-4 w-4" />
-              </CardContent>
-            </Card>
+        <div className="flex items-center gap-2">
+          <SearchHint />
+          <Link
+            href={ROUTES.CHAT}
+            className="bg-foreground text-background hover:bg-foreground/90 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors"
+          >
+            <MessageSquare className="h-4 w-4" />
+            New chat
           </Link>
-          <Link href={ROUTES.RAG}>
-            <Card className="hover:bg-accent cursor-pointer transition-colors">
-              <CardContent className="flex items-center gap-3 p-4">
-                <Database className="text-primary h-5 w-5" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Knowledge Base</p>
-                  <p className="text-muted-foreground text-xs">Manage collections & search</p>
-                </div>
-                <ArrowRight className="text-muted-foreground h-4 w-4" />
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Link href={ROUTES.PROFILE}>
-            <Card className="hover:bg-accent cursor-pointer transition-colors">
-              <CardContent className="flex items-center gap-3 p-4">
-                <Settings className="text-primary h-5 w-5" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Profile & Settings</p>
-                  <p className="text-muted-foreground text-xs">Manage your account</p>
-                </div>
-                <ArrowRight className="text-muted-foreground h-4 w-4" />
-              </CardContent>
-            </Card>
-          </Link>
-
-          <a href={`${BACKEND_URL}/docs`} target="_blank" rel="noopener noreferrer">
-            <Card className="hover:bg-accent cursor-pointer transition-colors">
-              <CardContent className="flex items-center gap-3 p-4">
-                <BookOpen className="text-primary h-5 w-5" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">API Documentation</p>
-                  <p className="text-muted-foreground text-xs">OpenAPI / Swagger docs</p>
-                </div>
-                <ExternalLink className="text-muted-foreground h-4 w-4" />
-              </CardContent>
-            </Card>
-          </a>
-
-          <a href="/api/conversations/export" download="conversations_export.json">
-            <Card className="hover:bg-accent cursor-pointer transition-colors">
-              <CardContent className="flex items-center gap-3 p-4">
-                <ArrowRight className="text-primary h-5 w-5" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Export Conversations</p>
-                  <p className="text-muted-foreground text-xs">Download all chats as JSON</p>
-                </div>
-                <ExternalLink className="text-muted-foreground h-4 w-4" />
-              </CardContent>
-            </Card>
-          </a>
         </div>
       </div>
-      {/* Admin Actions */}
+
+      {/* Stat cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Credits balance"
+          value={creditsLoading ? "—" : credits ? credits.balance.toLocaleString() : "0"}
+          icon={Sparkles}
+          delta={creditsDelta}
+          deltaLabel="vs prior 7d"
+          spark={creditsSpark.length >= 2 ? creditsSpark : undefined}
+          loading={creditsLoading}
+          featured
+        />
+        <StatCard
+          label="Conversations"
+          value={convLoading ? "—" : (conversations?.total ?? 0).toLocaleString()}
+          icon={MessageSquare}
+          loading={convLoading}
+        />
+        <StatCard
+          label="API calls (7d)"
+          value={timeline ? callsSpark.reduce((a, b) => a + b, 0).toLocaleString() : "—"}
+          icon={Activity}
+          delta={callsDelta}
+          deltaLabel="vs prior 7d"
+          spark={callsSpark.length >= 2 ? callsSpark : undefined}
+          loading={!timeline}
+        />
+        <StatCard
+          label="Knowledge base"
+          value={ragStats ? ragStats.vectors.toLocaleString() : "—"}
+          unit={ragStats ? `vector${ragStats.vectors === 1 ? "" : "s"}` : undefined}
+          icon={Database}
+          loading={!ragStats}
+        />
+      </div>
+
+      {/* Status strip */}
+      <div className="border-border bg-card flex flex-wrap items-center gap-x-6 gap-y-2 rounded-2xl border px-5 py-3 text-xs">
+        <span className="inline-flex items-center gap-2">
+          {healthError ? (
+            <>
+              <XCircle className="text-destructive h-4 w-4" />
+              <span className="font-mono uppercase tracking-wider text-destructive">API offline</span>
+            </>
+          ) : (
+            <>
+              <CheckCircle className="text-brand h-4 w-4" />
+              <span className="text-foreground/70 font-mono uppercase tracking-wider">
+                {health?.status || "Operational"}
+              </span>
+            </>
+          )}
+        </span>
+        {health?.version && (
+          <span className="text-foreground/45 font-mono uppercase tracking-wider">
+            v{health.version}
+          </span>
+        )}
+        <span className="text-foreground/45 font-mono uppercase tracking-wider">
+          {ragStats ? `${ragStats.collections} collection${ragStats.collections === 1 ? "" : "s"}` : "—"}
+        </span>
+        {credits && (
+          <span className="text-foreground/45 font-mono uppercase tracking-wider">
+            Threshold {credits.threshold.toLocaleString()}
+          </span>
+        )}
+        <Link
+          href={ROUTES.BILLING}
+          className="text-foreground/55 hover:text-foreground ml-auto inline-flex items-center gap-1 font-mono uppercase tracking-wider"
+        >
+          <CreditCard className="h-3.5 w-3.5" />
+          Manage billing →
+        </Link>
+      </div>
+
+      {/* Usage timeline (full width) */}
+      <UsageTimeline />
+
+      {/* Activity + quick actions side-by-side */}
+      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+        <RecentActivity />
+        <QuickActions />
+      </div>
+
+      {/* Admin row */}
       {user?.role === "admin" && (
         <div>
-          <h2 className="mb-3 text-lg font-semibold">Admin Actions</h2>
+          <h2 className="font-display text-foreground mb-3 text-base font-semibold">
+            Admin actions
+          </h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Link href={ROUTES.ADMIN_RATINGS}>
-              <Card className="hover:bg-accent cursor-pointer transition-colors">
-                <CardContent className="flex items-center gap-3 p-4">
-                  <Star className="text-primary h-5 w-5" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">Response Ratings</p>
-                    <p className="text-muted-foreground text-xs">View and manage ratings</p>
-                  </div>
-                  <ArrowRight className="text-muted-foreground h-4 w-4" />
-                </CardContent>
-              </Card>
-            </Link>
-
-            <Link href={ROUTES.ADMIN_CONVERSATIONS}>
-              <Card className="hover:bg-accent cursor-pointer transition-colors">
-                <CardContent className="flex items-center gap-3 p-4">
-                  <List className="text-primary h-5 w-5" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">All Conversations</p>
-                    <p className="text-muted-foreground text-xs">View all user conversations</p>
-                  </div>
-                  <ArrowRight className="text-muted-foreground h-4 w-4" />
-                </CardContent>
-              </Card>
-            </Link>
+            <AdminTile
+              icon={Star}
+              label="Response ratings"
+              description="View and manage ratings"
+              href={ROUTES.ADMIN_RATINGS}
+            />
+            <AdminTile
+              icon={List}
+              label="All conversations"
+              description="Inspect any user's chats"
+              href={ROUTES.ADMIN_CONVERSATIONS}
+            />
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function SearchHint() {
+  return (
+    <div className="border-foreground/15 bg-background hidden items-center gap-2 rounded-full border px-3 py-1.5 text-xs sm:inline-flex">
+      <Search className="text-foreground/45 h-3.5 w-3.5" />
+      <span className="text-foreground/55">Search</span>
+      <kbd className="border-foreground/15 bg-card text-foreground/65 rounded-md border px-1.5 py-0.5 font-mono text-[10px]">
+        ⌘K
+      </kbd>
+    </div>
+  );
+}
+
+function AdminTile({
+  icon: Icon,
+  label,
+  description,
+  href,
+}: {
+  icon: typeof Star;
+  label: string;
+  description: string;
+  href: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="lift border-border hover:border-foreground/30 bg-card flex items-center gap-3 rounded-2xl border p-4 transition-colors"
+    >
+      <span className="bg-foreground/8 text-foreground flex h-9 w-9 items-center justify-center rounded-full">
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="flex-1">
+        <p className="text-foreground text-sm font-semibold">{label}</p>
+        <p className="text-foreground/55 text-xs">{description}</p>
+      </div>
+    </Link>
   );
 }

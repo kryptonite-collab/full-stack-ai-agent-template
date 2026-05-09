@@ -44,6 +44,7 @@ class TestSeatLimitEnforcement:
         with patch("app.repositories.invitation_repo.get_by_token", new=AsyncMock(return_value=inv)), \
              patch("app.repositories.member_repo.get", new=AsyncMock(return_value=None)), \
              patch("app.repositories.organization_repo.get_by_id", new=AsyncMock(return_value=org)), \
+             patch("app.repositories.user_repo.get_by_id", new=AsyncMock(return_value=None)), \
              patch("app.repositories.member_repo.count_for_org", new=AsyncMock(return_value=3)), \
              patch("app.repositories.member_repo.create", new=AsyncMock(return_value=MagicMock())), \
              patch("app.repositories.invitation_repo.accept", new=AsyncMock()):
@@ -62,6 +63,7 @@ class TestSeatLimitEnforcement:
         with patch("app.repositories.invitation_repo.get_by_token", new=AsyncMock(return_value=inv)), \
              patch("app.repositories.member_repo.get", new=AsyncMock(return_value=None)), \
              patch("app.repositories.organization_repo.get_by_id", new=AsyncMock(return_value=org)), \
+             patch("app.repositories.user_repo.get_by_id", new=AsyncMock(return_value=None)), \
              patch("app.repositories.member_repo.count_for_org", new=AsyncMock(return_value=3)):
             svc = InvitationService(mock_db)
             with pytest.raises(PaymentRequiredError):
@@ -77,6 +79,7 @@ class TestSeatLimitEnforcement:
         with patch("app.repositories.invitation_repo.get_by_token", new=AsyncMock(return_value=inv)), \
              patch("app.repositories.member_repo.get", new=AsyncMock(return_value=None)), \
              patch("app.repositories.organization_repo.get_by_id", new=AsyncMock(return_value=org)), \
+             patch("app.repositories.user_repo.get_by_id", new=AsyncMock(return_value=None)), \
              patch("app.repositories.member_repo.count_for_org", new=AsyncMock(return_value=100)), \
              patch("app.repositories.member_repo.create", new=AsyncMock(return_value=MagicMock())), \
              patch("app.repositories.invitation_repo.accept", new=AsyncMock()):

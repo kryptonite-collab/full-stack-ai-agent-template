@@ -22,6 +22,9 @@ from app.api.routes.v1.invitations import (
 from app.api.routes.v1 import knowledge_bases
 from app.api.routes.v1 import billing
 from app.api.routes.v1 import marketing
+from app.api.routes.v1 import contact
+from app.api.routes.v1 import api_keys
+from app.api.routes.v1 import admin_stats
 
 v1_router = APIRouter()
 
@@ -88,3 +91,6 @@ v1_router.include_router(knowledge_bases.router, prefix="/kb", tags=["knowledge-
 # Billing routes (Stripe Checkout, Portal, Webhook)
 v1_router.include_router(billing.router, prefix="/billing", tags=["billing"])
 v1_router.include_router(marketing.router, tags=["marketing"])
+v1_router.include_router(contact.router, tags=["contact"])
+v1_router.include_router(api_keys.router, prefix="/api-keys", tags=["api-keys"])
+v1_router.include_router(admin_stats.router, prefix="/admin", tags=["admin:stats"])
