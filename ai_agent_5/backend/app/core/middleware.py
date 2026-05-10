@@ -86,12 +86,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             f"{directive} {value}" for directive, value in self.csp_directives.items()
         )
 
-        # Add security headers
-        response.headers["Content-Security-Policy"] = csp_value
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Add security headers — respect any already set by the route, so an
+        # endpoint can opt into less restrictive framing (e.g. user-content
+        # files served inline for the chat preview panel).
+        response.headers.setdefault("Content-Security-Policy", csp_value)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("X-XSS-Protection", "1; mode=block")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers["Permissions-Policy"] = (
             "accelerometer=(), camera=(), geolocation=(), gyroscope=(), "
             "magnetometer=(), microphone=(), payment=(), usb=()"

@@ -67,6 +67,16 @@ const nextConfig: NextConfig = {
         source: "/(.*)",
         headers: securityHeaders,
       },
+      // Relax framing for the file endpoint so the chat preview panel can
+      // embed PDFs/HTML in an iframe from the same origin. Listed AFTER the
+      // catch-all so its values win for matching headers.
+      {
+        source: "/api/files/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+        ],
+      },
     ];
   },
 

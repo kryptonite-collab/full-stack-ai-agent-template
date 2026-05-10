@@ -58,8 +58,15 @@ async def download_file(
     file_id: UUID,
     file_upload_svc: FileUploadSvc,
     current_user: CurrentUser,
+    disposition: str = "inline",
 ) -> Any:
-    """Download a file. Only the owner can access their files."""
+    """Serve a file. Only the owner can access their files.
+
+    By default the response is ``Content-Disposition: inline`` so PDFs, images
+    and audio/video render directly inside an ``<iframe>`` / media tag (used
+    by the chat file-preview panel). Pass ``?disposition=attachment`` to force
+    the browser's download dialog (used by the explicit "Download" button).
+    """
     try:
         chat_file = await file_upload_svc.get_user_file(file_id, current_user.id)
     except NotFoundError:
@@ -72,7 +79,22 @@ async def download_file(
     if not file_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found on disk")
 
-    return FileResponse(path=file_path, filename=chat_file.filename, media_type=chat_file.mime_type)
+    # FastAPI's ``FileResponse(filename=...)`` always uses ``attachment`` —
+    # build the header manually so we can switch to ``inline`` for previews.
+    mode = "attachment" if disposition == "attachment" else "inline"
+    # Quote-escape the filename for the header to survive special chars.
+    safe_name = chat_file.filename.replace('"', "")
+    # The chat file-preview panel embeds this URL in an iframe (PDFs, HTML,
+    # etc). Default ``X-Frame-Options: DENY`` from SecurityHeadersMiddleware
+    # would break that, so opt this endpoint down to SAMEORIGIN. The CSP
+    # ``frame-ancestors 'self'`` is the modern equivalent — browsers honor
+    # whichever they recognize.
+    headers = {
+        "Content-Disposition": f'{mode}; filename="{safe_name}"',
+        "X-Frame-Options": "SAMEORIGIN",
+        "Content-Security-Policy": "frame-ancestors 'self'",
+    }
+    return FileResponse(path=file_path, media_type=chat_file.mime_type, headers=headers)
 
 
 @router.get("/{file_id}/info", response_model=FileInfo)
