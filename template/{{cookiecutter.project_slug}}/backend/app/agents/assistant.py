@@ -55,6 +55,78 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+{%- if cookiecutter.use_all_providers %}
+
+
+def _build_model(model_name: str):
+    """Dispatch to the right pydantic-ai Model for ``model_name``.
+
+    Multi-provider deployments accept any model name from any installed SDK.
+    Routing is done by name prefix:
+      - openai/gpt-*, openai/o*, openai/text-* → OpenAI
+      - anthropic/claude-*                      → Anthropic
+      - google/gemini-*                         → Google
+      - openrouter/<provider>/<model>           → OpenRouter
+      - bare names (no slash) → fall back to OpenAI for backwards compat.
+    """
+    name = model_name or settings.AI_MODEL
+    lowered = name.lower()
+    if "/" in lowered:
+        prefix, _, rest = lowered.partition("/")
+        if prefix == "openai":
+            return OpenAIResponsesModel(
+                rest, provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY)
+            )
+        if prefix == "anthropic":
+            return AnthropicModel(rest)
+        if prefix == "google":
+            return GoogleModel(
+                rest, provider=GoogleProvider(api_key=settings.GOOGLE_API_KEY)
+            )
+        if prefix == "openrouter":
+            return OpenRouterModel(
+                rest, provider=OpenRouterProvider(api_key=settings.OPENROUTER_API_KEY)
+            )
+    # Bare model name — best-effort sniff by family.
+    if lowered.startswith(("claude-", "claude/")):
+        return AnthropicModel(name.removeprefix("claude/"))
+    if lowered.startswith("gemini"):
+        return GoogleModel(name, provider=GoogleProvider(api_key=settings.GOOGLE_API_KEY))
+    return OpenAIResponsesModel(
+        name, provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY)
+    )
+{%- elif cookiecutter.use_openai %}
+
+
+def _build_model(model_name: str):
+    """OpenAI-only deployment."""
+    return OpenAIResponsesModel(
+        model_name or settings.AI_MODEL,
+        provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
+    )
+{%- elif cookiecutter.use_anthropic %}
+
+
+def _build_model(model_name: str):
+    return AnthropicModel(model_name or settings.AI_MODEL)
+{%- elif cookiecutter.use_google %}
+
+
+def _build_model(model_name: str):
+    return GoogleModel(
+        model_name or settings.AI_MODEL,
+        provider=GoogleProvider(api_key=settings.GOOGLE_API_KEY),
+    )
+{%- elif cookiecutter.use_openrouter %}
+
+
+def _build_model(model_name: str):
+    return OpenRouterModel(
+        model_name or settings.AI_MODEL,
+        provider=OpenRouterProvider(api_key=settings.OPENROUTER_API_KEY),
+    )
+{%- endif %}
+
 
 @dataclass
 class Deps:
@@ -99,29 +171,7 @@ class AssistantAgent:
 
     def _create_agent(self) -> Agent[Deps, str]:
         """Create and configure the PydanticAI agent."""
-{%- if cookiecutter.use_openai %}
-        model = OpenAIResponsesModel(
-            self.model_name,
-            provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
-        )
-{%- endif %}
-{%- if cookiecutter.use_anthropic %}
-        model = AnthropicModel(
-            self.model_name,
-        )
-{%- endif %}
-{%- if cookiecutter.use_google %}
-        model = GoogleModel(
-            self.model_name,
-            provider=GoogleProvider(api_key=settings.GOOGLE_API_KEY),
-        )
-{%- endif %}
-{%- if cookiecutter.use_openrouter %}
-        model = OpenRouterModel(
-            self.model_name,
-            provider=OpenRouterProvider(api_key=settings.OPENROUTER_API_KEY),
-        )
-{%- endif %}
+        model = _build_model(self.model_name)
 
         capabilities = [ReinjectSystemPrompt()]
         if self.thinking_effort:

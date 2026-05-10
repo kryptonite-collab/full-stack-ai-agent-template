@@ -6,6 +6,7 @@ export { ToolApprovalDialog } from "./tool-approval-dialog";
 export { ChatInput } from "./chat-input";
 export { CopyButton } from "./copy-button";
 export { MarkdownContent } from "./markdown-content";
+export { FilePreviewPanel } from "./file-preview-panel";
 export { ConversationSidebar } from "./conversation-sidebar";
 {%- if cookiecutter.enable_teams and cookiecutter.enable_rag %}
 export { KBPanel } from "./kb-panel";

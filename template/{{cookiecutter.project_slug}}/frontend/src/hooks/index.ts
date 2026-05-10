@@ -16,3 +16,6 @@ export { useKnowledgeBases } from "./use-knowledge-bases";
 {%- if cookiecutter.enable_billing %}
 export { useBilling, useSubscription, useCredits, usePlans, useInvoices } from "./use-billing";
 {%- endif %}
+{%- if cookiecutter.use_auth %}
+export { useSlashCommands, isBuiltinEnabled, BUILTIN_COMMAND_LIST } from "./use-slash-commands";
+{%- endif %}

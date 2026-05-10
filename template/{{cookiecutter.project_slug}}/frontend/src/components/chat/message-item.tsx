@@ -6,7 +6,7 @@ import { ToolCallCard } from "./tool-call-card";
 import { MarkdownContent } from "./markdown-content";
 import { CopyButton } from "./copy-button";
 import { RatingButtons } from "./rating-buttons";
-import { useChatStore } from "@/stores";
+import { useChatStore, useFilePreviewStore } from "@/stores";
 import { Bot, FileText, Paperclip, RefreshCw, User } from "lucide-react";
 import Image from "next/image";
 import { useAuthStore } from "@/stores";
@@ -21,6 +21,7 @@ interface MessageItemProps {
 export function MessageItem({ message, groupPosition, onRegenerate }: MessageItemProps) {
   const isUser = message.role === "user";
   const updateMessage = useChatStore((state) => state.updateMessage);
+  const openPreview = useFilePreviewStore((s) => s.open);
   const { user: authUser } = useAuthStore();
   const isGrouped = groupPosition && groupPosition !== "single";
 
@@ -85,12 +86,12 @@ export function MessageItem({ message, groupPosition, onRegenerate }: MessageIte
           return (
             <div className="flex flex-wrap gap-2">
               {attachments.map((att) => (att.kind === "image" ? (
-                <a
+                <button
+                  type="button"
                   key={att.file.id}
-                  href={getFileUrl(att.file.id)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block overflow-hidden rounded-xl border"
+                  onClick={() => openPreview(att.file)}
+                  className="hover:ring-foreground/30 block overflow-hidden rounded-xl border ring-2 ring-transparent transition-all"
+                  title={`Open ${att.file.filename}`}
                 >
                   <Image
                     src={getFileUrl(att.file.id)}
@@ -100,13 +101,19 @@ export function MessageItem({ message, groupPosition, onRegenerate }: MessageIte
                     className="h-auto max-h-64 w-auto max-w-xs object-contain"
                     unoptimized
                   />
-                </a>
+                </button>
+              ) : "file" in att ? (
+                <FileChip
+                  key={att.file.id}
+                  filename={att.file.filename}
+                  hint={att.file.mime_type}
+                  onClick={() => openPreview(att.file)}
+                />
               ) : (
                 <FileChip
-                  key={"file" in att ? att.file.id : att.id}
-                  href={getFileUrl("file" in att ? att.file.id : att.id)}
-                  filename={"file" in att ? att.file.filename : "Attached file"}
-                  hint={"file" in att ? att.file.mime_type : undefined}
+                  key={att.id}
+                  filename="Attached file"
+                  href={getFileUrl(att.id)}
                 />
               )))}
             </div>
@@ -159,6 +166,8 @@ export function MessageItem({ message, groupPosition, onRegenerate }: MessageIte
               isUser
                 ? "bg-primary text-primary-foreground rounded-tr-sm"
                 : "bg-muted rounded-tl-sm",
+              // Dim queued user messages so they read as "pending send"
+              message.queued && "opacity-60",
             )}
           >
             {isUser ? (
@@ -172,6 +181,13 @@ export function MessageItem({ message, groupPosition, onRegenerate }: MessageIte
               </div>
             )}
           </div>
+        )}
+
+        {isUser && message.queued && (
+          <span className="text-foreground/55 mt-1 inline-flex items-center gap-1.5 self-end font-mono text-[10px] tracking-wider uppercase">
+            <span className="bg-foreground/40 inline-block h-1 w-1 animate-pulse rounded-full" />
+            Queued
+          </span>
         )}
 
         {message.toolCalls && message.toolCalls.length > 0 && (
@@ -247,23 +263,23 @@ function kindFor(file: ChatMessageFile): "image" | "file" {
 }
 
 function FileChip({
-  href,
   filename,
   hint,
+  onClick,
+  href,
 }: {
-  href: string;
   filename: string;
   hint?: string;
+  /** When provided, clicking opens the file in the preview panel. */
+  onClick?: () => void;
+  /** Fallback for legacy attachments without full metadata — opens in new tab. */
+  href?: string;
 }) {
   const ext = filename.includes(".") ? filename.split(".").pop()!.toLowerCase() : null;
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="border-foreground/15 bg-card hover:border-foreground/40 inline-flex max-w-xs items-center gap-2 rounded-xl border px-3 py-2 transition-colors"
-      title={hint ?? filename}
-    >
+  const className =
+    "border-foreground/15 bg-card hover:border-foreground/40 inline-flex max-w-xs items-center gap-2 rounded-xl border px-3 py-2 transition-colors text-left";
+  const inner = (
+    <>
       <span className="bg-foreground/8 text-foreground/65 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
         <FileText className="h-4 w-4" />
       </span>
@@ -276,6 +292,24 @@ function FileChip({
         )}
       </span>
       <Paperclip className="text-foreground/40 h-3.5 w-3.5 shrink-0" />
+    </>
+  );
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={className} title={hint ?? filename}>
+        {inner}
+      </button>
+    );
+  }
+  return (
+    <a
+      href={href ?? "#"}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={className}
+      title={hint ?? filename}
+    >
+      {inner}
     </a>
   );
 }

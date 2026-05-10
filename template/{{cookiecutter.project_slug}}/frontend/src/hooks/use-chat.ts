@@ -428,16 +428,32 @@ export function useChat(options: UseChatOptions = {}) {
   });
 
   const doSend = useCallback(
-    (content: string, fileIds?: string[], files?: ChatMessageFile[]) => {
-      addMessage({
-        id: nanoid(),
-        role: "user",
-        content,
-        timestamp: new Date(),
-        conversationId: conversationId || undefined,
-        fileIds,
-        files,
-      });
+    (
+      content: string,
+      fileIds?: string[],
+      files?: ChatMessageFile[],
+      opts?: { skipAdd?: boolean },
+    ) => {
+      // `skipAdd` is set by the queue drainer — the user message was already
+      // added to the chat at queue time, so we just flip `queued` off here.
+      if (opts?.skipAdd) {
+        useChatStore
+          .getState()
+          .updateMessagesWhere(
+            (m) => m.role === "user" && m.queued === true && m.content === content,
+            (m) => ({ ...m, queued: false }),
+          );
+      } else {
+        addMessage({
+          id: nanoid(),
+          role: "user",
+          content,
+          timestamp: new Date(),
+          conversationId: conversationId || undefined,
+          fileIds,
+          files,
+        });
+      }
       setIsProcessing(true);
       const payload: Record<string, unknown> = {
         message: content,
@@ -454,7 +470,10 @@ export function useChat(options: UseChatOptions = {}) {
 
   const sendChatMessage = useCallback(
     (content: string, fileIds?: string[], files?: ChatMessageFile[]) => {
-      if (isProcessing) {
+      // Queue when the agent is busy OR the socket is offline. Drained by the
+      // effect below as soon as the queue head is sendable. Without the
+      // offline gate, sendMessage() silently drops on a closed socket.
+      if (isProcessing || !isConnected) {
         messageQueueRef.current.push({ content, fileIds, files });
         addMessage({
           id: nanoid(),
@@ -464,12 +483,13 @@ export function useChat(options: UseChatOptions = {}) {
           conversationId: conversationId || undefined,
           fileIds,
           files,
+          queued: true,
         });
         return;
       }
       doSend(content, fileIds, files);
     },
-    [isProcessing, doSend, addMessage, conversationId],
+    [isProcessing, isConnected, doSend, addMessage, conversationId],
   );
 
   // Human-in-the-Loop: send resume message with user decisions
@@ -515,15 +535,20 @@ export function useChat(options: UseChatOptions = {}) {
     [updateMessage, sendMessage],
   );
 
-  // Drain message queue when processing finishes
+  // Drain message queue when processing finishes AND we're back online.
+  // Re-runs on either flip so a reconnect after offline → drains; a busy turn
+  // ending → drains the next one.
   useEffect(() => {
-    if (!isProcessing && messageQueueRef.current.length > 0) {
+    if (isConnected && !isProcessing && messageQueueRef.current.length > 0) {
       const next = messageQueueRef.current.shift();
       if (next) {
-        setTimeout(() => doSend(next.content, next.fileIds, next.files), 100);
+        setTimeout(
+          () => doSend(next.content, next.fileIds, next.files, { skipAdd: true }),
+          100,
+        );
       }
     }
-  }, [isProcessing, doSend]);
+  }, [isProcessing, isConnected, doSend]);
 
   return {
     messages,

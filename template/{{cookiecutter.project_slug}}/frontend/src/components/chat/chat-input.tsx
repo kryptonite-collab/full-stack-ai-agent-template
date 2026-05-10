@@ -1,26 +1,58 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button, Badge, Spinner } from "@/components/ui";
 import { Send, Mic, MicOff, Paperclip, X, Image as ImageIcon, FileText } from "lucide-react";
 import Image from "next/image";
 import { toast } from "sonner";
 import { uploadFile, getFileUrl, type FileUploadResponse } from "@/lib/file-api";
+import {
+  BUILTIN_COMMANDS,
+  searchCommands,
+  type SlashCommand,
+  type SlashCommandContext,
+} from "./slash-commands";
+import { SlashCommandPalette } from "./slash-command-palette";
 
 interface ChatInputProps {
   onSend: (message: string, fileIds?: string[], files?: FileUploadResponse[]) => void;
   disabled?: boolean;
   isProcessing?: boolean;
+  /** Local actions for slash commands. Wire from <ChatContainer>. */
+  slashContext?: SlashCommandContext;
+  /** Effective slash commands (built-ins + user customs, after overrides). */
+  commands?: SlashCommand[];
 }
 
-export function ChatInput({ onSend, disabled, isProcessing }: ChatInputProps) {
+export function ChatInput({
+  onSend,
+  disabled,
+  isProcessing,
+  slashContext,
+  commands,
+}: ChatInputProps) {
   const [message, setMessage] = useState("");
   const [attachedFiles, setAttachedFiles] = useState<FileUploadResponse[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  // Slash-command palette state. Open while message starts with "/" and the
+  // caller wired a context — without one, commands have nothing to do.
+  const [paletteIndex, setPaletteIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+
+  const showPalette = !!slashContext && message.startsWith("/") && !message.includes("\n");
+  const allCommands = commands ?? BUILTIN_COMMANDS;
+  const filteredCommands = useMemo(
+    () => (showPalette ? searchCommands(allCommands, message) : []),
+    [showPalette, message, allCommands],
+  );
+
+  // Reset selection when the filter set changes.
+  useEffect(() => {
+    setPaletteIndex(0);
+  }, [filteredCommands.length, message]);
 
   useEffect(() => {
     if (!isProcessing && !isUploading && textareaRef.current) {
@@ -35,8 +67,30 @@ export function ChatInput({ onSend, disabled, isProcessing }: ChatInputProps) {
     }
   }, [message]);
 
+  const runSlashCommand = useCallback(
+    (cmd: SlashCommand) => {
+      if (cmd.action.kind === "client") {
+        cmd.action.run(slashContext!);
+        setMessage("");
+        return;
+      }
+      // send-as-message — replace the slash with the canned prompt and send
+      // through the normal flow so it lands as a regular user turn.
+      const fileIds = attachedFiles.length > 0 ? attachedFiles.map((f) => f.id) : undefined;
+      const files = attachedFiles.length > 0 ? attachedFiles : undefined;
+      onSend(cmd.action.replaceWith, fileIds, files);
+      setMessage("");
+      setAttachedFiles([]);
+    },
+    [attachedFiles, onSend, slashContext],
+  );
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (showPalette && filteredCommands[paletteIndex]) {
+      runSlashCommand(filteredCommands[paletteIndex]);
+      return;
+    }
     const trimmed = message.trim();
     if (!trimmed && attachedFiles.length === 0) return;
     if (disabled || isUploading) return;
@@ -49,6 +103,32 @@ export function ChatInput({ onSend, disabled, isProcessing }: ChatInputProps) {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (showPalette && filteredCommands.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setPaletteIndex((i) => (i + 1) % filteredCommands.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setPaletteIndex(
+          (i) => (i - 1 + filteredCommands.length) % filteredCommands.length,
+        );
+        return;
+      }
+      if (e.key === "Tab") {
+        // Tab autocompletes to the highlighted command name.
+        e.preventDefault();
+        const cmd = filteredCommands[paletteIndex];
+        if (cmd) setMessage("/" + cmd.name + " ");
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMessage("");
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
@@ -139,7 +219,15 @@ export function ChatInput({ onSend, disabled, isProcessing }: ChatInputProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} className="relative">
+      {showPalette && (
+        <SlashCommandPalette
+          commands={filteredCommands}
+          selectedIndex={paletteIndex}
+          onSelectIndex={setPaletteIndex}
+          onPick={runSlashCommand}
+        />
+      )}
       {/* Attached files */}
       {attachedFiles.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 pb-2">

@@ -73,9 +73,18 @@ dependencies = [
 {%- endif %}
 {%- if cookiecutter.enable_caching %}
     "fastapi-cache2>=0.2.2",
+    # fastapi_cache imports starlette.templating which requires Jinja2 even
+    # when no templates are rendered.
+    "jinja2>=3.1.0",
 {%- endif %}
 {%- if cookiecutter.enable_rate_limiting %}
     "slowapi>=0.1.9",
+{%- endif %}
+{%- if cookiecutter.enable_email and cookiecutter.email_provider == "resend" %}
+    "resend>=2.0.0",
+{%- endif %}
+{%- if cookiecutter.enable_email and cookiecutter.email_provider == "smtp" %}
+    "aiosmtplib>=3.0.0",
 {%- endif %}
 {%- if cookiecutter.enable_pagination %}
     "fastapi-pagination>=0.12.31",
@@ -108,16 +117,17 @@ dependencies = [
     "boto3>=1.42.0",
 {%- endif %}
 {%- if cookiecutter.use_pydantic_ai %}
-{%- if cookiecutter.use_openai %}
+{%- if cookiecutter.use_all_providers %}
+    # Multi-provider: install every SDK so the runtime model picker can route
+    # to whichever backend the user (or env default) selects.
+    "pydantic-ai-slim[openai,anthropic,google,openrouter,duckduckgo,web-fetch]>=1.80.0",
+{%- elif cookiecutter.use_openai %}
     "pydantic-ai-slim[openai,duckduckgo,web-fetch]>=1.80.0",
-{%- endif %}
-{%- if cookiecutter.use_anthropic %}
+{%- elif cookiecutter.use_anthropic %}
     "pydantic-ai-slim[anthropic,duckduckgo,web-fetch]>=1.80.0",
-{%- endif %}
-{%- if cookiecutter.use_google %}
+{%- elif cookiecutter.use_google %}
     "pydantic-ai-slim[google,duckduckgo,web-fetch]>=1.80.0",
-{%- endif %}
-{%- if cookiecutter.use_openrouter %}
+{%- elif cookiecutter.use_openrouter %}
     "pydantic-ai-slim[openrouter,duckduckgo,web-fetch]>=1.80.0",
 {%- endif %}
 {%- endif %}

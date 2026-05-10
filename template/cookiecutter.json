@@ -72,6 +72,7 @@
   "use_anthropic": false,
   "use_google": false,
   "use_openrouter": false,
+  "use_all_providers": false,
   "enable_conversation_persistence": true,
   "enable_langsmith": false,
   "enable_web_search": false,

@@ -250,18 +250,29 @@ class Settings(BaseSettings):
     # === AI Agent ({{ cookiecutter.ai_framework }}, {{ cookiecutter.llm_provider }}) ===
 {%- if cookiecutter.use_openai %}
     OPENAI_API_KEY: str = ""
-    AI_MODEL: str = "gpt-5-mini"
 {%- endif %}
 {%- if cookiecutter.use_anthropic %}
     ANTHROPIC_API_KEY: str = ""
-    AI_MODEL: str = "claude-sonnet-4-6"
 {%- endif %}
 {%- if cookiecutter.use_google %}
     GOOGLE_API_KEY: str = ""
-    AI_MODEL: str = "gemini-2.5-flash"
 {%- endif %}
 {%- if cookiecutter.use_openrouter %}
     OPENROUTER_API_KEY: str = ""
+{%- endif %}
+{%- if cookiecutter.use_all_providers %}
+    # Multi-provider: model can come from any installed SDK. Prefix with the
+    # provider name (`openai/gpt-5-mini`, `anthropic/claude-sonnet-4-6`,
+    # `google/gemini-2.5-flash`, `openrouter/anthropic/claude-sonnet-4-6`)
+    # so the dispatcher in agents/assistant.py routes to the right backend.
+    AI_MODEL: str = "openai/gpt-5-mini"
+{%- elif cookiecutter.use_openai %}
+    AI_MODEL: str = "gpt-5-mini"
+{%- elif cookiecutter.use_anthropic %}
+    AI_MODEL: str = "claude-sonnet-4-6"
+{%- elif cookiecutter.use_google %}
+    AI_MODEL: str = "gemini-2.5-flash"
+{%- elif cookiecutter.use_openrouter %}
     AI_MODEL: str = "anthropic/claude-sonnet-4-6"
 {%- endif %}
     AI_TEMPERATURE: float = 0.7
@@ -269,7 +280,27 @@ class Settings(BaseSettings):
     AI_THINKING_ENABLED: bool = False
     AI_THINKING_EFFORT: str = "medium"  # "low", "medium", "high"
 {%- endif %}
-{%- if cookiecutter.use_openai %}
+{%- if cookiecutter.use_all_providers %}
+    AI_AVAILABLE_MODELS: list[str] = [
+        # OpenAI
+        "openai/gpt-5-mini",
+        "openai/gpt-5",
+        "openai/gpt-4.1-mini",
+        "openai/gpt-4.1",
+        "openai/gpt-4o-mini",
+        "openai/o4-mini",
+        "openai/o3",
+        # Anthropic
+        "anthropic/claude-sonnet-4-6",
+        "anthropic/claude-haiku-3-5-20241022",
+        # Google
+        "google/gemini-2.5-flash",
+        "google/gemini-2.5-pro",
+        # OpenRouter (proxies many providers)
+        "openrouter/anthropic/claude-sonnet-4-6",
+        "openrouter/deepseek/deepseek-r1",
+    ]
+{%- elif cookiecutter.use_openai %}
     AI_AVAILABLE_MODELS: list[str] = [
         "gpt-5.4",
         "gpt-5.4-mini",
@@ -288,22 +319,19 @@ class Settings(BaseSettings):
         "gpt-4o",
         "gpt-4o-mini",
     ]
-{%- endif %}
-{%- if cookiecutter.use_anthropic %}
+{%- elif cookiecutter.use_anthropic %}
     AI_AVAILABLE_MODELS: list[str] = [
         "claude-sonnet-4-6",
         "claude-sonnet-4-5-20241022",
         "claude-haiku-3-5-20241022",
     ]
-{%- endif %}
-{%- if cookiecutter.use_google %}
+{%- elif cookiecutter.use_google %}
     AI_AVAILABLE_MODELS: list[str] = [
         "gemini-2.5-flash",
         "gemini-2.5-pro",
         "gemini-2.0-flash",
     ]
-{%- endif %}
-{%- if cookiecutter.use_openrouter %}
+{%- elif cookiecutter.use_openrouter %}
     AI_AVAILABLE_MODELS: list[str] = [
         "anthropic/claude-sonnet-4-6",
         "openai/gpt-5-mini",

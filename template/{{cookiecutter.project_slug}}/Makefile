@@ -1,4 +1,4 @@
-.PHONY: install format lint test run clean help db-init dev dev-down dev-logs dev-rebuild dev-frontend stage stage-down prod prod-down
+.PHONY: install format lint test run clean help db-init dev dev-down dev-logs dev-rebuild dev-frontend docker-clean stage stage-down prod prod-down
 
 # === Environments ===========================================================
 # `make dev`   — local development (docker-compose.dev.yml + bind-mounted source)
@@ -32,7 +32,13 @@ dev:
 	@echo "▶ Building backend image…"
 	docker compose -f docker-compose.dev.yml build app
 	@echo "▶ Starting services…"
-	docker compose -f docker-compose.dev.yml up -d
+	@if ! docker compose -f docker-compose.dev.yml up -d; then \
+		echo ""; \
+		echo "⚠ First start failed. Tearing down stale containers and retrying once…"; \
+		echo "  (volumes preserved — DB data is safe; use 'make clean' for a full wipe)"; \
+		docker compose -f docker-compose.dev.yml down --remove-orphans; \
+		docker compose -f docker-compose.dev.yml up -d; \
+	fi
 {%- if cookiecutter.use_postgresql or cookiecutter.use_sqlite %}
 	$(call _wait_for_db,docker-compose.dev.yml)
 	@echo "▶ Applying migrations…"
@@ -80,6 +86,14 @@ bootstrap: dev
 
 dev-down:
 	docker compose -f docker-compose.dev.yml down
+
+# Full wipe — containers, networks, AND volumes. Use after a corrupted state
+# (e.g. detached networks, port conflicts that left orphans). DESTROYS DB data.
+docker-clean:
+	@echo "▶ Removing containers, networks, AND volumes for the dev stack…"
+	@echo "  ⚠️  This deletes all local DB data and uploaded files."
+	docker compose -f docker-compose.dev.yml down -v --remove-orphans
+	@echo "✅ Cleaned. Run 'make dev' to start fresh."
 
 dev-logs:
 	docker compose -f docker-compose.dev.yml logs -f
@@ -409,6 +423,7 @@ help:
 	@echo "  make dev-down       Stop dev stack"
 	@echo "  make dev-logs       Tail dev container logs"
 	@echo "  make dev-rebuild    Force-rebuild backend image"
+	@echo "  make docker-clean   Wipe containers + networks + volumes (DESTROYS data)"
 {%- if cookiecutter.use_frontend %}
 	@echo "  make dev-frontend   Start frontend container (after 'make dev')"
 {%- endif %}

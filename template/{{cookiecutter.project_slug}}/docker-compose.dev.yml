@@ -24,6 +24,11 @@ services:
 {%- if cookiecutter.use_chromadb %}
       - chroma_data:/app/chroma_data
 {%- endif %}
+{%- if cookiecutter.enable_email %}
+      # email/templates.py reads pre-compiled HTML/text from /app/emails/compiled.
+      # Build context is ./backend so the dir isn't in the image — mount it.
+      - ./emails:/app/emails:ro
+{%- endif %}
     env_file:
       - ./backend/.env
     environment:
@@ -185,9 +190,14 @@ services:
       - backend
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      # Milvus standalone needs querycoord/datacoord/proxy to converge before
+      # /healthz returns 200. On Apple Silicon Macs first boot can take 60-180s.
+      # start_period suppresses failures during warm-up; 10 retries × 30s gives
+      # 5 more minutes after that before compose gives up.
+      start_period: 90s
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 10
     restart: unless-stopped
 {%- endif %}
 
@@ -224,6 +234,9 @@ services:
 {%- endif %}
 {%- if cookiecutter.use_chromadb %}
       - chroma_data:/app/chroma_data
+{%- endif %}
+{%- if cookiecutter.enable_email %}
+      - ./emails:/app/emails:ro
 {%- endif %}
     command: celery -A app.worker.celery_app worker --loglevel=debug
     env_file:
@@ -318,6 +331,9 @@ services:
 {%- endif %}
 {%- if cookiecutter.use_chromadb %}
       - chroma_data:/app/chroma_data
+{%- endif %}
+{%- if cookiecutter.enable_email %}
+      - ./emails:/app/emails:ro
 {%- endif %}
     command: taskiq worker app.worker.taskiq_app:broker --workers 1 --reload
     env_file:

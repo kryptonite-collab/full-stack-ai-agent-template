@@ -432,6 +432,11 @@ else:
                 "",
                 "# WebSocket URL for real-time features",
                 "BACKEND_WS_URL=ws://localhost:{{ cookiecutter.backend_port }}",
+                "",
+                "# Canonical site URL — used for SEO metadata, OG tags, sitemap.xml,",
+                "# robots.txt, schema.org organization. Override in production with",
+                "# the real https origin.",
+                "NEXT_PUBLIC_SITE_URL=http://localhost:{{ cookiecutter.frontend_port }}",
             ]
             env_lines.extend([
                 "",
@@ -439,10 +444,21 @@ else:
                 "NEXT_PUBLIC_AUTH_ENABLED=true",
             ])
             if enable_oauth:
+                # Build the comma-separated provider list the OAuth buttons read.
+                # Currently only Google has full backend wiring; expand here when
+                # GitHub / Microsoft are added.
+                providers = []
+                if "{{ cookiecutter.enable_oauth_google }}" == "True":
+                    providers.append("google")
                 env_lines.extend([
                     "",
                     "# Public API URL for OAuth redirects (exposed to browser)",
                     "NEXT_PUBLIC_API_URL=http://localhost:{{ cookiecutter.backend_port }}",
+                    "",
+                    "# OAuth providers shown on /login + /register (comma-separated).",
+                    "# Drives the <OAuthButtons> component — must include only providers",
+                    "# whose backend credentials are configured in backend/.env.",
+                    "NEXT_PUBLIC_OAUTH_PROVIDERS=" + ",".join(providers),
                 ])
             if enable_rag:
                 env_lines.extend([
@@ -723,6 +739,12 @@ if not use_auth:
     remove_file(os.path.join(backend_app, "repositories", "api_key.py"))
     remove_file(os.path.join(backend_app, "services", "api_key.py"))
     remove_file(os.path.join(backend_app, "api", "routes", "v1", "api_keys.py"))
+    # User slash commands (per-user, so auth-required)
+    remove_file(os.path.join(backend_app, "db", "models", "user_slash_command.py"))
+    remove_file(os.path.join(backend_app, "schemas", "user_slash_command.py"))
+    remove_file(os.path.join(backend_app, "repositories", "user_slash_command.py"))
+    remove_file(os.path.join(backend_app, "services", "user_slash_command.py"))
+    remove_file(os.path.join(backend_app, "api", "routes", "v1", "me_slash_commands.py"))
     # Password reset + magic link schemas (auth-only flows)
     remove_file(os.path.join(backend_app, "schemas", "password_reset.py"))
     if use_frontend:
@@ -732,6 +754,34 @@ if not use_auth:
             os.path.join(
                 frontend_src_for_api_keys, "components", "settings", "api-key-manager.tsx"
             ),
+        )
+        # User slash commands frontend (BFF proxies, hook, manager, settings page)
+        remove_dir(
+            os.path.join(frontend_src_for_api_keys, "app", "api", "me", "slash-commands")
+        )
+        remove_file(
+            os.path.join(frontend_src_for_api_keys, "lib", "slash-commands-api.ts")
+        )
+        remove_file(
+            os.path.join(frontend_src_for_api_keys, "hooks", "use-slash-commands.ts")
+        )
+        remove_file(
+            os.path.join(
+                frontend_src_for_api_keys,
+                "components",
+                "settings",
+                "slash-commands-manager.tsx",
+            ),
+        )
+        remove_dir(
+            os.path.join(
+                frontend_src_for_api_keys,
+                "app",
+                "[locale]",
+                "(dashboard)",
+                "settings",
+                "slash-commands",
+            )
         )
         # Frontend proxies for password reset + magic link
         remove_dir(

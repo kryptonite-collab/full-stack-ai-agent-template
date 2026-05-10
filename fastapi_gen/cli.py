@@ -196,9 +196,12 @@ def new(output: Path | None, no_input: bool, name: str | None, minimal: bool) ->
 )
 @click.option(
     "--llm-provider",
-    type=click.Choice(["openai", "anthropic", "google", "openrouter"]),
+    type=click.Choice(["openai", "anthropic", "google", "openrouter", "all"]),
     default="openai",
-    help="LLM provider (default: openai). Note: openrouter only works with pydantic_ai",
+    help=(
+        "LLM provider (default: openai). 'all' installs every SDK and lets users "
+        "pick the model at runtime. openrouter requires pydantic_ai."
+    ),
 )
 @click.option("--redis", is_flag=True, help="Enable Redis")
 @click.option("--caching", is_flag=True, help="Enable caching (requires --redis)")

@@ -61,6 +61,7 @@ from app.api.routes.v1 import contact
 {%- endif %}
 {%- if cookiecutter.use_auth %}
 from app.api.routes.v1 import api_keys
+from app.api.routes.v1 import me_slash_commands
 {%- endif %}
 from app.api.routes.v1 import admin_stats
 
@@ -186,5 +187,8 @@ v1_router.include_router(contact.router, tags=["contact"])
 {%- endif %}
 {%- if cookiecutter.use_auth %}
 v1_router.include_router(api_keys.router, prefix="/api-keys", tags=["api-keys"])
+v1_router.include_router(
+    me_slash_commands.router, prefix="/me/slash-commands", tags=["me:slash-commands"]
+)
 {%- endif %}
 v1_router.include_router(admin_stats.router, prefix="/admin", tags=["admin:stats"])

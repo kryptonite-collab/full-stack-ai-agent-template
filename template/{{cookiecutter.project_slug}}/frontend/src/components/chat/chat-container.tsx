@@ -5,6 +5,7 @@ import { useChat } from "@/hooks";
 import { ChatEmptyState } from "./chat-empty-state";
 import { ChatInput } from "./chat-input";
 import { ChatSettings } from "./chat-settings";
+import { FilePreviewPanel } from "./file-preview-panel";
 import { MessageList } from "./message-list";
 import { ToolApprovalDialog } from "./tool-approval-dialog";
 import { ChevronDown, Check, Database } from "lucide-react";
@@ -17,6 +18,9 @@ import {
 import type { PendingApproval, Decision } from "@/types";
 import { useConversationStore, useChatStore } from "@/stores";
 import { useConversations } from "@/hooks";
+{%- if cookiecutter.use_auth %}
+import { useSlashCommands } from "@/hooks";
+{%- endif %}
 {%- if cookiecutter.enable_teams and cookiecutter.enable_rag %}
 import { useKBPanelStore } from "@/stores";
 {%- endif %}
@@ -150,6 +154,9 @@ function AuthenticatedChatContainer() {
   {%- if cookiecutter.enable_teams and cookiecutter.enable_rag %}
   const { toggle: toggleKBPanel } = useKBPanelStore();
   {%- endif %}
+  {%- if cookiecutter.use_auth %}
+  const { commands: slashCommands } = useSlashCommands();
+  {%- endif %}
 
   const handleRegenerate = useCallback(
     (assistantMessageId: string) => {
@@ -167,6 +174,26 @@ function AuthenticatedChatContainer() {
     [messages, sendMessage],
   );
 
+  // Slash command handlers — passed down to ChatInput so the / palette can
+  // run them locally without going through the agent.
+  const slashContext = {
+    clearChat: clearMessages,
+    regenerateLast: () => {
+      // Find the last assistant message and trigger regenerate.
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        if (m && m.role === "assistant") {
+          handleRegenerate(m.id);
+          return;
+        }
+      }
+    },
+    openSettings: () => {
+      // Best-effort: focus the settings popover trigger if it's mounted.
+      document.querySelector<HTMLButtonElement>('[data-chat-settings-trigger]')?.click();
+    },
+  };
+
   return (
     <ChatUI
       messages={messages}
@@ -180,6 +207,10 @@ function AuthenticatedChatContainer() {
       onTemperatureChange={setTemperature}
       onThinkingEffortChange={setThinkingEffort}
       onRegenerate={handleRegenerate}
+      slashContext={slashContext}
+      {%- if cookiecutter.use_auth %}
+      slashCommands={slashCommands}
+      {%- endif %}
       messagesEndRef={messagesEndRef}
       scrollContainerRef={scrollContainerRef}
       pendingApproval={pendingApproval}
@@ -257,6 +288,8 @@ interface ChatUIProps {
   onTemperatureChange?: (temperature: number | null) => void;
   onThinkingEffortChange?: (effort: "low" | "medium" | "high" | null) => void;
   onRegenerate?: (messageId: string) => void;
+  slashContext?: import("./slash-commands").SlashCommandContext;
+  slashCommands?: import("./slash-commands").SlashCommand[];
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   pendingApproval?: PendingApproval | null;
@@ -274,6 +307,8 @@ function ChatUI({
   onTemperatureChange,
   onThinkingEffortChange,
   onRegenerate,
+  slashContext,
+  slashCommands,
   messagesEndRef,
   scrollContainerRef,
   pendingApproval,
@@ -281,7 +316,8 @@ function ChatUI({
   onToggleKBPanel,
 }: ChatUIProps) {
   return (
-    <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
+    <div className="flex h-full w-full">
+      <div className="mx-auto flex h-full min-w-0 max-w-4xl flex-1 flex-col">
       <div
         ref={scrollContainerRef}
         className="flex-1 scrollbar-thin overflow-y-auto px-2 py-4 sm:px-4 sm:py-6"
@@ -317,6 +353,8 @@ function ChatUI({
               onSend={sendMessage}
               disabled={!isConnected || !!pendingApproval}
               isProcessing={isProcessing}
+              slashContext={slashContext}
+              commands={slashCommands}
             />
           </div>
           <div className="border-foreground/8 flex items-center justify-between border-t px-3 py-2 sm:px-4">
@@ -357,6 +395,8 @@ function ChatUI({
           AI can make mistakes. Verify important information.
         </p>
       </div>
+      </div>
+      <FilePreviewPanel />
     </div>
   );
 }

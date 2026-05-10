@@ -1084,6 +1084,16 @@ def get_api_key_service(db: DBSession) -> ApiKeyService:
 
 
 ApiKeySvc = Annotated[ApiKeyService, Depends(get_api_key_service)]
+from app.services.user_slash_command import UserSlashCommandService
+
+
+def get_user_slash_command_service(db: DBSession) -> UserSlashCommandService:
+    return UserSlashCommandService(db)
+
+
+UserSlashCommandSvc = Annotated[
+    UserSlashCommandService, Depends(get_user_slash_command_service)
+]
 {%- endif %}
 from app.services.admin import AdminService
 

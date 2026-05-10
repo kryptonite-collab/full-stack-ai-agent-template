@@ -8,6 +8,7 @@ import {
   Palette,
   Plug,
   Shield,
+  Slash,
   UserCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -39,6 +40,12 @@ const ITEMS: NavItem[] = [
     href: "/settings/api-keys",
     icon: KeyRound,
     description: "Create, rotate, revoke",
+  },
+  {
+    label: "Slash commands",
+    href: "/settings/slash-commands",
+    icon: Slash,
+    description: "Custom shortcuts + built-in toggles",
   },
   {
     label: "Notifications",

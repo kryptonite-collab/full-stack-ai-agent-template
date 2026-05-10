@@ -44,6 +44,7 @@ export function ChatSettings({
         <button
           type="button"
           aria-label="Chat settings"
+          data-chat-settings-trigger
           className={cn(
             "text-foreground/55 hover:bg-foreground/5 hover:text-foreground inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-mono text-[11px] tracking-wider uppercase transition-colors",
             overridden && "text-foreground",

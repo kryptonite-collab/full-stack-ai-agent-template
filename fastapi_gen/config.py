@@ -80,12 +80,18 @@ class AIFrameworkType(StrEnum):
 
 
 class LLMProviderType(StrEnum):
-    """Supported LLM providers."""
+    """Supported LLM providers.
+
+    `ALL` installs SDKs for every provider and lets users pick the model at
+    runtime via the chat model picker — useful when you want to compare
+    providers or pass model selection through to end users.
+    """
 
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GOOGLE = "google"
     OPENROUTER = "openrouter"
+    ALL = "all"
 
 
 class RateLimitStorageType(StrEnum):
@@ -554,10 +560,16 @@ class ProjectConfig(BaseModel):
             "use_pydantic_deep": self.ai_framework == AIFrameworkType.PYDANTIC_DEEP,
             "sandbox_backend": self.sandbox_backend,
             "llm_provider": self.llm_provider.value,
-            "use_openai": self.llm_provider == LLMProviderType.OPENAI,
-            "use_anthropic": self.llm_provider == LLMProviderType.ANTHROPIC,
-            "use_google": self.llm_provider == LLMProviderType.GOOGLE,
-            "use_openrouter": self.llm_provider == LLMProviderType.OPENROUTER,
+            # ALL turns on every provider so users can pick the model at runtime.
+            "use_openai": self.llm_provider
+            in (LLMProviderType.OPENAI, LLMProviderType.ALL),
+            "use_anthropic": self.llm_provider
+            in (LLMProviderType.ANTHROPIC, LLMProviderType.ALL),
+            "use_google": self.llm_provider
+            in (LLMProviderType.GOOGLE, LLMProviderType.ALL),
+            "use_openrouter": self.llm_provider
+            in (LLMProviderType.OPENROUTER, LLMProviderType.ALL),
+            "use_all_providers": self.llm_provider == LLMProviderType.ALL,
             # Legacy fixed values (always enabled, not user-configurable)
             "enable_conversation_persistence": True,
             "enable_langsmith": self.enable_langsmith,
