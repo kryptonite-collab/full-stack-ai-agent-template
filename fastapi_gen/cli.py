@@ -10,19 +10,23 @@ from .config import (
     AIFrameworkType,
     AuthMode,
     BackgroundTaskType,
+    BillingModelType,
     BrandColorType,
     CIType,
     DatabaseType,
     EmailProviderType,
     FrontendType,
     LLMProviderType,
+    NewsletterProviderType,
     OAuthProvider,
     OrmType,
+    PaymentProviderType,
     PdfParserType,
     ProjectConfig,
     RAGFeatures,
     RerankerType,
     ReverseProxyType,
+    TenancyMode,
     VectorStoreType,
 )
 from .generator import generate_project, post_generation_tasks
@@ -53,7 +57,7 @@ def _preflight_check(  # noqa: C901
     task_queue: str,
     redis: bool,
     caching: bool,
-    rate_limiting: bool,
+    rate_limiting: bool,  # noqa: ARG001 — reserved for future pre-flight checks
     llm_provider: str,
 ) -> None:
     """Catch common flag conflicts BEFORE ProjectConfig validation.
@@ -380,9 +384,11 @@ def new(output: Path | None, no_input: bool, name: str | None, minimal: bool) ->
 )
 @click.option(
     "--ai-framework",
-    type=click.Choice(["pydantic_ai", "langchain", "langgraph", "crewai", "deepagents"]),
+    type=click.Choice(
+        ["none", "pydantic_ai", "langchain", "langgraph", "crewai", "deepagents", "pydantic_deep"]
+    ),
     default="pydantic_ai",
-    help="AI framework (default: pydantic_ai)",
+    help="AI framework (default: pydantic_ai). Use 'none' for plain SaaS without AI/chat.",
 )
 @click.option(
     "--llm-provider",
@@ -444,9 +450,21 @@ def new(output: Path | None, no_input: bool, name: str | None, minimal: bool) ->
         "without leaking internal UUIDs."
     ),
 )
-@click.option("--websockets", is_flag=True, default=False, help="Enable WebSocket support (required for real-time AI chat)")
-@click.option("--web-search", is_flag=True, default=False, help="Enable web search tool for AI agents (Tavily)")
-@click.option("--web-fetch", is_flag=True, default=False, help="Enable web fetch/scraping tool for AI agents")
+@click.option(
+    "--websockets",
+    is_flag=True,
+    default=False,
+    help="Enable WebSocket support (required for real-time AI chat)",
+)
+@click.option(
+    "--web-search",
+    is_flag=True,
+    default=False,
+    help="Enable web search tool for AI agents (Tavily)",
+)
+@click.option(
+    "--web-fetch", is_flag=True, default=False, help="Enable web fetch/scraping tool for AI agents"
+)
 @click.option("--session-management", is_flag=True, help="Enable session management")
 @click.option(
     "--reverse-proxy",
@@ -492,9 +510,7 @@ def new(output: Path | None, no_input: bool, name: str | None, minimal: bool) ->
         ]
     ),
     default=None,
-    help=(
-        "Apply configuration preset. Run `fastapi-fullstack templates` for full descriptions."
-    ),
+    help=("Apply configuration preset. Run `fastapi-fullstack templates` for full descriptions."),
 )
 @click.option(
     "--rag",
@@ -623,11 +639,75 @@ def new(output: Path | None, no_input: bool, name: str | None, minimal: bool) ->
     default=False,
     help="Generate competitor comparison pages",
 )
-@click.option(
-    "--affiliate", is_flag=True, default=False, help="Generate affiliate program pages"
-)
+@click.option("--affiliate", is_flag=True, default=False, help="Generate affiliate program pages")
 @click.option(
     "--status-badge", is_flag=True, default=False, help="Add status/uptime badge to frontend"
+)
+@click.option(
+    "--allowed-email-domains",
+    type=str,
+    default="",
+    help=(
+        "Comma-separated email domains allowed to register via OAuth "
+        "(e.g. 'example.com,acme.com'). Empty = allow all."
+    ),
+)
+@click.option(
+    "--seed-admin-email",
+    type=str,
+    default="",
+    help="Email to auto-promote to app-admin on first startup (written to .env as FIRST_ADMIN_EMAIL).",
+)
+@click.option(
+    "--embed-allowed-origins",
+    type=str,
+    default="",
+    help=(
+        "Comma-separated origins allowed to embed the app in an iframe "
+        "(sets CSP frame-ancestors + CORS). Empty = 'frame-ancestors none'."
+    ),
+)
+@click.option(
+    "--brand-from-config",
+    is_flag=True,
+    default=False,
+    help="Load brand color/logo from BRAND_COLOR/BRAND_LOGO_URL env vars at runtime (white-label).",
+)
+@click.option(
+    "--newsletter-provider",
+    type=click.Choice(["resend", "mailchimp", "convertkit"]),
+    default="resend",
+    help="Newsletter/audience provider when --newsletter is set (default: resend).",
+)
+@click.option(
+    "--tenancy",
+    type=click.Choice(["single", "multi_org", "platform"]),
+    default="single",
+    help="Tenancy architecture: single (default), multi_org (requires --teams), platform.",
+)
+@click.option(
+    "--per-org-quotas",
+    is_flag=True,
+    default=False,
+    help="Enable per-organisation usage quotas (requires --teams).",
+)
+@click.option(
+    "--payment-provider",
+    type=click.Choice(["stripe", "paddle", "lemonsqueezy", "polar"]),
+    default="stripe",
+    help="Payment processor (default: stripe — only Stripe is fully implemented).",
+)
+@click.option(
+    "--billing-model",
+    type=click.Choice(["subscription", "usage", "hybrid", "one_time"]),
+    default="subscription",
+    help="Billing model (default: subscription — hybrid = base plan + credits).",
+)
+@click.option(
+    "--storybook",
+    is_flag=True,
+    default=False,
+    help="Generate Storybook setup for frontend components.",
 )
 def create(
     name: str,
@@ -700,6 +780,16 @@ def create(
     comparison_pages: bool,
     affiliate: bool,
     status_badge: bool,
+    allowed_email_domains: str,
+    seed_admin_email: str,
+    embed_allowed_origins: str,
+    brand_from_config: bool,
+    newsletter_provider: str,
+    tenancy: str,
+    per_org_quotas: bool,
+    payment_provider: str,
+    billing_model: str,
+    storybook: bool,
 ) -> None:
     """Create a new FastAPI project with specified options.
 
@@ -881,16 +971,15 @@ def create(
                 timezone=timezone,
             )
         elif preset == "blog-saas":
-            # Content-first SaaS with auth + marketing/blog/legal. Note: --no-ai
-            # is wishlist; for now AI is generated but unused if you don't
-            # surface chat in the marketing nav. Drop --rag and skip credits.
+            # Content-first SaaS with auth + marketing/blog/legal. No AI/chat —
+            # plain SaaS with newsletter, email, and public marketing pages.
             config = ProjectConfig(
                 project_name=name,
                 database=DatabaseType.POSTGRESQL,
                 enable_logfire=False,
                 enable_redis=False,
                 enable_websockets=False,
-                ai_framework=AIFrameworkType.PYDANTIC_AI,
+                ai_framework=AIFrameworkType.NONE,
                 llm_provider=LLMProviderType.OPENAI,
                 enable_teams=False,
                 enable_billing=False,
@@ -1118,6 +1207,16 @@ def create(
                 enable_comparison_pages=comparison_pages,
                 enable_affiliate_program=affiliate,
                 enable_status_badge=status_badge,
+                allowed_email_domains=allowed_email_domains,
+                seed_admin_email=seed_admin_email,
+                embed_allowed_origins=embed_allowed_origins,
+                enable_brand_from_config=brand_from_config,
+                newsletter_provider=NewsletterProviderType(newsletter_provider),
+                tenancy=TenancyMode(tenancy),
+                enable_per_org_quotas=per_org_quotas,
+                payment_provider=PaymentProviderType(payment_provider),
+                billing_model=BillingModelType(billing_model),
+                enable_storybook=storybook,
             )
 
         console.print(f"[cyan]Creating project:[/] {name}")
@@ -1127,9 +1226,12 @@ def create(
         console.print("[dim]Auth: JWT + API Key[/]")
         if config.frontend != FrontendType.NONE:
             console.print(f"[dim]Frontend: {config.frontend.value}[/]")
-        console.print(
-            f"[dim]AI Agent: {config.ai_framework.value} ({config.llm_provider.value})[/]"
-        )
+        if config.ai_framework == AIFrameworkType.NONE:
+            console.print("[dim]AI: disabled (plain SaaS)[/]")
+        else:
+            console.print(
+                f"[dim]AI Agent: {config.ai_framework.value} ({config.llm_provider.value})[/]"
+            )
         if config.background_tasks != BackgroundTaskType.NONE:
             console.print(f"[dim]Task Queue: {config.background_tasks.value}[/]")
         console.print()
@@ -1171,13 +1273,13 @@ def templates() -> None:
     console.print(
         "  --preset blog-saas        Content-first SaaS: marketing + blog + changelog + newsletter (minimal AI)"
     )
-    console.print(
-        "  --preset consumer-app     B2C app: OAuth + marketing + billing + credits"
-    )
+    console.print("  --preset consumer-app     B2C app: OAuth + marketing + billing + credits")
     console.print(
         "  --preset dev-playground   Local AI prototyping: SQLite + no Docker/K8s, fast iteration"
     )
-    console.print("  --minimal                 Minimal project (SQLite, no Docker/K8s/CI, no Redis)")
+    console.print(
+        "  --minimal                 Minimal project (SQLite, no Docker/K8s/CI, no Redis)"
+    )
     console.print()
 
     console.print("[bold]Databases:[/]")
@@ -1193,23 +1295,39 @@ def templates() -> None:
     console.print("  API Key utility (X-API-Key header, available for custom use)")
     console.print("  --oauth-google                 Enable Google OAuth")
     console.print("  --session-management           Enable session management")
-    console.print("  --auth-mode local              Default: backend handles email/password + OAuth")
-    console.print("  --auth-mode delegated          Trust JWTs from external IdP (Auth0/Clerk/Cognito/Keycloak)")
-    console.print("  --shared-secret-jwt            With delegated: use HMAC shared secret instead of JWKS")
-    console.print("  --external-user-id             With delegated: store IdP sub on Conversation rows")
+    console.print(
+        "  --auth-mode local              Default: backend handles email/password + OAuth"
+    )
+    console.print(
+        "  --auth-mode delegated          Trust JWTs from external IdP (Auth0/Clerk/Cognito/Keycloak)"
+    )
+    console.print(
+        "  --shared-secret-jwt            With delegated: use HMAC shared secret instead of JWKS"
+    )
+    console.print(
+        "  --external-user-id             With delegated: store IdP sub on Conversation rows"
+    )
     console.print()
 
     console.print("[bold]AI Agent:[/]")
+    console.print(
+        "  --ai-framework none             No AI — plain SaaS (removes agents/chat/conversations)"
+    )
     console.print("  --ai-framework pydantic_ai      PydanticAI (recommended)")
     console.print("  --ai-framework langchain        LangChain")
     console.print("  --ai-framework langgraph        LangGraph (ReAct agent)")
     console.print("  --ai-framework crewai           CrewAI (multi-agent crews)")
     console.print("  --ai-framework deepagents       DeepAgents (agentic coding, HITL)")
+    console.print(
+        "  --ai-framework pydantic_deep    PydanticDeep (deep agentic coding, Docker sandbox)"
+    )
     console.print("  --llm-provider openai           OpenAI (gpt-4o-mini)")
     console.print("  --llm-provider anthropic        Anthropic (claude-sonnet-4-5)")
     console.print("  --llm-provider google           Google Gemini (gemini-2.0-flash)")
     console.print("  --llm-provider openrouter       OpenRouter (pydantic_ai only)")
-    console.print("  --websockets                    Enable WebSocket support (real-time chat streaming)")
+    console.print(
+        "  --websockets                    Enable WebSocket support (real-time chat streaming)"
+    )
     console.print("  --web-search                    Enable web search tool for AI agents (Tavily)")
     console.print("  --web-fetch                     Enable web fetch/scraping tool for AI agents")
     console.print()
@@ -1224,8 +1342,12 @@ def templates() -> None:
     console.print("[bold]Frontend:[/]")
     console.print("  --frontend none        API only (no frontend)")
     console.print("  --frontend nextjs      Next.js 15 (App Router, TypeScript, Bun, i18n)")
-    console.print("  --no-i18n              Single-language English-only frontend (no locale switcher)")
-    console.print("  --marketing-site       Generate marketing/landing pages (blog, pricing, legal)")
+    console.print(
+        "  --no-i18n              Single-language English-only frontend (no locale switcher)"
+    )
+    console.print(
+        "  --marketing-site       Generate marketing/landing pages (blog, pricing, legal)"
+    )
     console.print("  --changelog            Generate changelog page")
     console.print()
 
@@ -1251,14 +1373,36 @@ def templates() -> None:
     console.print("  --slack            Enable Slack app integration")
     console.print()
 
+    console.print("[bold]Authentication:[/]")
+    console.print("  --allowed-email-domains example.com,acme.com")
+    console.print("                     Restrict OAuth registration to specific email domains")
+    console.print("  --seed-admin-email admin@example.com")
+    console.print("                     Auto-promote this address to app-admin on first startup")
+    console.print()
+
     console.print("[bold]Teams & Billing:[/]")
     console.print("  --teams            Enable multi-tenant organizations")
-    console.print("  --billing          Enable Stripe billing (requires --teams)")
+    console.print("  --tenancy single|multi_org|platform  Tenancy architecture (default: single)")
+    console.print("  --billing          Enable billing (requires --teams)")
+    console.print("  --payment-provider stripe|paddle|lemonsqueezy|polar  (default: stripe)")
+    console.print("  --billing-model subscription|usage|hybrid|one_time  (default: subscription)")
     console.print("  --credits          Enable credits system (requires --billing)")
+    console.print("  --per-org-quotas   Enable per-organisation usage quotas (requires --teams)")
     console.print("  --usage-dashboard  Enable usage dashboard (requires --credits)")
     console.print("  --email            Enable transactional email")
     console.print("  --email-provider resend|smtp|log  Email provider (default: log)")
     console.print("  --newsletter       Enable newsletter signup (requires --email)")
+    console.print("  --newsletter-provider resend|mailchimp|convertkit  (default: resend)")
+    console.print()
+
+    console.print("[bold]Embedding & White-label:[/]")
+    console.print("  --embed-allowed-origins https://app.example.com")
+    console.print("                     Allow iframe embedding from these origins (CSP + CORS)")
+    console.print("  --brand-from-config")
+    console.print(
+        "                     Load brand color/logo from env vars at runtime (white-label)"
+    )
+    console.print("  --storybook        Generate Storybook for frontend components")
     console.print()
 
     console.print("[bold]Observability:[/]")

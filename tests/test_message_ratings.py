@@ -401,7 +401,7 @@ class TestRatingFeatureCodeQuality:
             ],
             capture_output=True,
             text=True,
-            cwd=project_with_ratings,
+            cwd=project_with_ratings / "backend",
         )
         assert result.returncode == 0, f"Ty failed for rating files:\n{result.stdout}"
 

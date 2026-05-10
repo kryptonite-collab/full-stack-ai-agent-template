@@ -58,13 +58,27 @@ class UserService:
         self.db = db
 {%- endif %}
 
+{%- if cookiecutter.use_sqlite %}
+    async def _repo(self, func, /, *args, **kwargs):
+        """Invoke a sync SQLite repo function from async context."""
+        return func(self.db, *args, **kwargs)
+{%- elif cookiecutter.use_mongodb %}
+    async def _repo(self, func, /, *args, **kwargs):
+        """Invoke an async MongoDB repo function (no db session)."""
+        return await func(*args, **kwargs)
+{%- else %}
+    async def _repo(self, func, /, *args, **kwargs):
+        """Invoke an async PostgreSQL repo function with the session."""
+        return await func(self.db, *args, **kwargs)
+{%- endif %}
+
     async def get_by_id(self, user_id: UUID) -> User:
         """Get user by ID.
 
         Raises:
             NotFoundError: If user does not exist.
         """
-        user = await user_repo.get_by_id(self.db, user_id)
+        user = await self._repo(user_repo.get_by_id, user_id)
         if not user:
             raise NotFoundError(
                 message="User not found",
@@ -74,7 +88,7 @@ class UserService:
 
     async def get_by_email(self, email: str) -> User | None:
         """Get user by email. Returns None if not found."""
-        return await user_repo.get_by_email(self.db, email)
+        return await self._repo(user_repo.get_by_email, email)
 
     async def get_multi(
         self,
@@ -83,21 +97,27 @@ class UserService:
         limit: int = 100,
     ) -> list[User]:
         """Get multiple users with pagination."""
-        return await user_repo.get_multi(self.db, skip=skip, limit=limit)
+        return await self._repo(user_repo.get_multi, skip=skip, limit=limit)
 
     async def list_paginated(self) -> Any:
         """Return paginated user list (fastapi-pagination Page)."""
+{%- if cookiecutter.use_mongodb %}
+        from fastapi_pagination.ext.beanie import paginate
+
+        return await paginate(User)
+{%- else %}
         from fastapi_pagination.ext.sqlalchemy import paginate
 
         return await paginate(self.db, user_repo.list_query())
+{%- endif %}
 
     async def delete_non_admins(self) -> int:
         """Bulk-delete users without the admin role. Returns affected row count."""
-        return await user_repo.delete_non_admins(self.db)
+        return await self._repo(user_repo.delete_non_admins)
 
     async def has_any(self) -> bool:
         """Return True if at least one user exists."""
-        return await user_repo.has_any(self.db)
+        return await self._repo(user_repo.has_any)
 
     async def admin_list_with_counts(
         self,
@@ -111,8 +131,8 @@ class UserService:
         """Admin: list users with conversation counts."""
         from app.schemas.conversation_share import AdminUserList, AdminUserRead
 
-        rows, total = await user_repo.admin_list_with_counts(
-            self.db,
+        rows, total = await self._repo(
+            user_repo.admin_list_with_counts,
             skip=skip,
             limit=limit,
             search=search,
@@ -144,7 +164,7 @@ class UserService:
         Raises:
             AlreadyExistsError: If email is already registered.
         """
-        existing = await user_repo.get_by_email(self.db, user_in.email)
+        existing = await self._repo(user_repo.get_by_email, user_in.email)
         if existing:
             raise AlreadyExistsError(
                 message="Email already registered",
@@ -160,12 +180,12 @@ class UserService:
         existing_count = self.db.execute(select(func.count()).select_from(User)).scalar_one()
         is_first_user = existing_count == 0
 {%- else %}
-        is_first_user = not await user_repo.has_any(self.db)
+        is_first_user = not await user_repo.has_any()
 {%- endif %}
 
         hashed_password = get_password_hash(user_in.password)
-        user = await user_repo.create(
-            self.db,
+        user = await self._repo(
+            user_repo.create,
             email=user_in.email,
             hashed_password=hashed_password,
             full_name=user_in.full_name,
@@ -208,14 +228,14 @@ class UserService:
            switching to delegated auth (e.g., migrated SaaS).
         3. Create new row + personal org + welcome email (best-effort).
         """
-        existing = await user_repo.get_by_external_user_id(self.db, external_user_id)
+        existing = await self._repo(user_repo.get_by_external_user_id, external_user_id)
         if existing:
             return existing
 
-        by_email = await user_repo.get_by_email(self.db, email)
+        by_email = await self._repo(user_repo.get_by_email, email)
         if by_email is not None:
-            await user_repo.update(
-                self.db,
+            await self._repo(
+                user_repo.update,
                 db_user=by_email,
                 update_data={"external_user_id": external_user_id},
             )
@@ -226,8 +246,8 @@ class UserService:
         ).scalar_one()
         is_first_user = existing_count == 0
 
-        user = await user_repo.create(
-            self.db,
+        user = await self._repo(
+            user_repo.create,
             email=email,
             hashed_password=None,
             full_name=full_name,
@@ -256,21 +276,21 @@ class UserService:
         attached to that account. New users get a Personal organization and a
         welcome email (best-effort).
         """
-        existing = await user_repo.get_by_oauth(self.db, provider, provider_id)
+        existing = await self._repo(user_repo.get_by_oauth, provider, provider_id)
         if existing:
             return existing
 
-        by_email = await user_repo.get_by_email(self.db, email)
+        by_email = await self._repo(user_repo.get_by_email, email)
         if by_email is not None:
-            await user_repo.update(
-                self.db,
+            await self._repo(
+                user_repo.update,
                 db_user=by_email,
                 update_data={"oauth_provider": provider, "oauth_id": provider_id},
             )
             return by_email
 
-        user = await user_repo.create(
-            self.db,
+        user = await self._repo(
+            user_repo.create,
             email=email,
             hashed_password=None,
             full_name=full_name,
@@ -301,7 +321,7 @@ class UserService:
         Raises:
             AuthenticationError: If credentials are invalid or user is inactive.
         """
-        user = await user_repo.get_by_email(self.db, email)
+        user = await self._repo(user_repo.get_by_email, email)
         if (
             not user
             or not user.hashed_password
@@ -324,7 +344,7 @@ class UserService:
         if "password" in update_data:
             update_data["hashed_password"] = get_password_hash(update_data.pop("password"))
 
-        return await user_repo.update(self.db, db_user=user, update_data=update_data)
+        return await self._repo(user_repo.update, db_user=user, update_data=update_data)
 
     async def update_avatar(
         self, user_id: UUID, file_data: bytes, filename: str, content_type: str
@@ -354,7 +374,7 @@ class UserService:
 
         # Save new avatar
         storage_path = await storage.save(f"avatars/{user_id}", filename, file_data)
-        return await user_repo.update_avatar(self.db, user_id, storage_path)
+        return await self._repo(user_repo.update, db_user=user, update_data={"avatar_url": storage_path})
 
     async def delete(self, user_id: UUID) -> User:
         """Delete user.
@@ -362,7 +382,7 @@ class UserService:
         Raises:
             NotFoundError: If user does not exist.
         """
-        user = await user_repo.delete(self.db, user_id)
+        user = await self._repo(user_repo.delete, user_id)
         if not user:
             raise NotFoundError(
                 message="User not found",
@@ -383,7 +403,7 @@ class UserService:
         existence — the public API always returns the same "if an account
         exists, you'll get a link" response.
         """
-        user = await user_repo.get_by_email(self.db, email)
+        user = await self._repo(user_repo.get_by_email, email)
         if user is None or not user.is_active:
             return None
         token = create_password_reset_token(subject=str(user.id))
@@ -410,8 +430,8 @@ class UserService:
         if not user.is_active:
             raise AuthenticationError(message="Account is disabled")
 
-        await user_repo.update(
-            self.db,
+        await self._repo(
+            user_repo.update,
             db_user=user,
             update_data={"hashed_password": get_password_hash(new_password)},
         )
@@ -419,7 +439,7 @@ class UserService:
         # Revoke any active sessions so a previously-issued refresh token cannot
         # outlive a password reset. The current request returns no tokens — the
         # user must log in again.
-        await session_repo.deactivate_all_user_sessions(self.db, user.id)
+        await self._repo(session_repo.deactivate_all_user_sessions, user.id)
 {%- endif %}
         return user
 
@@ -428,7 +448,7 @@ class UserService:
     # ------------------------------------------------------------------
 
     async def issue_magic_link_token(self, email: str) -> tuple[User, str] | None:
-        user = await user_repo.get_by_email(self.db, email)
+        user = await self._repo(user_repo.get_by_email, email)
         if user is None or not user.is_active:
             return None
         token = create_magic_link_token(subject=str(user.id))

@@ -190,6 +190,38 @@ class Settings(BaseSettings):
     IDP_NAME_CLAIM: str = "name"
     """JWT claim used to populate User.full_name on first sign-in (optional)."""
 {%- endif %}
+{%- if cookiecutter.enable_seed_admin %}
+
+    # === Initial app-admin seed ===
+    # Set to a registered user's email to auto-promote them to app-admin on startup.
+    # Run `{{ cookiecutter.project_slug }} cmd create-app-admin <email>` for the same effect.
+    FIRST_ADMIN_EMAIL: str = "{{ cookiecutter.seed_admin_email }}"
+{%- endif %}
+
+{%- if cookiecutter.enable_email_domain_allowlist %}
+
+    # === OAuth email domain allowlist ===
+    # Comma-separated list of email domains permitted to register via OAuth.
+    # Empty string = allow all domains.
+    ALLOWED_EMAIL_DOMAINS: str = "{{ cookiecutter.allowed_email_domains }}"
+{%- endif %}
+
+{%- if cookiecutter.enable_embed_mode %}
+
+    # === Embed mode ===
+    # Comma-separated origins allowed to embed the app in an iframe.
+    # Sets Content-Security-Policy frame-ancestors and CORS allow_origins.
+    EMBED_ALLOWED_ORIGINS: str = "{{ cookiecutter.embed_allowed_origins }}"
+{%- endif %}
+
+{%- if cookiecutter.enable_brand_from_config %}
+
+    # === Runtime brand (white-label) ===
+    # Override the bake-time brand colour/logo at runtime via env vars.
+    BRAND_COLOR: str = "{{ cookiecutter.brand_color }}"
+    BRAND_LOGO_URL: str = ""
+{%- endif %}
+
 {%- if cookiecutter.use_api_key %}
 
     # === Auth (API Key) ===
@@ -623,7 +655,14 @@ class Settings(BaseSettings):
 {%- if cookiecutter.enable_cors %}
 
     # === CORS ===
-    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8080"]
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:8080",
+{%- if cookiecutter.enable_embed_mode %}
+        # Embed mode: populate from env or baked-in defaults
+        *[o.strip() for o in "{{ cookiecutter.embed_allowed_origins }}".split(",") if o.strip()],
+{%- endif %}
+    ]
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_METHODS: list[str] = ["*"]
     CORS_ALLOW_HEADERS: list[str] = ["*"]

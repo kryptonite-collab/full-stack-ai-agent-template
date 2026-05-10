@@ -13,6 +13,20 @@ const withMDX = createMDX({
 {%- endif %}
 
 // Content Security Policy directives
+{%- if cookiecutter.enable_embed_mode %}
+// Embed mode: frame-ancestors lists each allowed origin from EMBED_ALLOWED_ORIGINS.
+// The env var is read at build time; set it in your CI/CD environment.
+const _embedOrigins = (process.env.EMBED_ALLOWED_ORIGINS || "{{ cookiecutter.embed_allowed_origins }}")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const _frameAncestors = _embedOrigins.length > 0
+  ? `frame-ancestors 'self' ${_embedOrigins.join(" ")};`
+  : "frame-ancestors 'self';";
+{%- else %}
+const _frameAncestors = "frame-ancestors 'none';";
+{%- endif %}
+
 const ContentSecurityPolicy = `
   default-src 'self';
   script-src 'self' 'unsafe-eval' 'unsafe-inline';
@@ -20,7 +34,7 @@ const ContentSecurityPolicy = `
   img-src 'self' blob: data: https:;
   font-src 'self' data:;
   connect-src 'self' ws: wss: http://localhost:* https://localhost:*;
-  frame-ancestors 'none';
+  ${_frameAncestors}
   base-uri 'self';
   form-action 'self';
 `
@@ -38,7 +52,11 @@ const securityHeaders = [
   },
   {
     key: "X-Frame-Options",
+{%- if cookiecutter.enable_embed_mode %}
+    value: "SAMEORIGIN",
+{%- else %}
     value: "DENY",
+{%- endif %}
   },
   {
     key: "X-XSS-Protection",

@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+{%- if cookiecutter.enable_embed_mode %}
+import { notFound } from "next/navigation";
+{%- endif %}
 
 import { LoginForm } from "@/components/auth";
 import type { Locale } from "@/i18n";
@@ -20,5 +23,8 @@ export async function generateMetadata({
 }
 
 export default function LoginPage() {
+{%- if cookiecutter.enable_embed_mode %}
+  notFound();
+{%- endif %}
   return <LoginForm />;
 }

@@ -8,14 +8,10 @@ import logging
 from typing import Any, TypedDict
 
 from langchain.agents import create_agent
-from langgraph.graph.state import CompiledStateGraph
-from langchain.agents.middleware import (
-    ModelRetryMiddleware,
-    ToolCallLimitMiddleware,
-    ToolRetryMiddleware,
-)
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
+from langchain.agents.middleware import ModelRetryMiddleware, ToolCallLimitMiddleware, ToolRetryMiddleware
 from langchain.tools import tool
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langgraph.graph.state import CompiledStateGraph
 {%- if cookiecutter.use_openai %}
 from langchain_openai import ChatOpenAI
 {%- endif %}
@@ -61,17 +57,9 @@ class AgentContext(TypedDict, total=False):
     metadata: dict[str, Any]
 
 
-class AgentState(TypedDict):
-    """State for the LangChain agent.
-
-    This is what flows through the agent graph.
-    """
-
-    messages: list[AnyMessage]
-
 
 @tool
-def current_datetime() -> str:
+def current_datetime() -> dict[str, str]:
     """Get the current date and time.
 
     Use this tool when you need to know the current date or time.
@@ -175,10 +163,41 @@ class LangChainAssistant:
 
     def _create_agent(self) -> CompiledStateGraph:
         """Create and configure the LangChain agent."""
-{%- if cookiecutter.use_openai %}
-        # OpenAI: ``reasoning`` is honored only by the Responses API. We pass
-        # ``summary: "auto"`` so reasoning summaries stream as content blocks
-        # (the model never returns raw chain-of-thought).
+{%- if cookiecutter.use_all_providers %}
+        lowered = self.model_name.lower()
+        if lowered.startswith(("claude-", "claude/")):
+            anthropic_kwargs: dict[str, Any] = {}
+            if self.thinking_effort:
+                budget = {"low": 1024, "medium": 4096, "high": 16384}.get(self.thinking_effort, 4096)
+                anthropic_kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
+                anthropic_kwargs["max_tokens"] = budget + 4096
+                anthropic_kwargs["temperature"] = 1.0
+            model = ChatAnthropic(
+                model=self.model_name,
+                temperature=anthropic_kwargs.pop("temperature", self.temperature),
+                api_key=settings.ANTHROPIC_API_KEY,
+                **anthropic_kwargs,
+            )
+        elif lowered.startswith("gemini"):
+            model = ChatGoogleGenerativeAI(
+                model=self.model_name,
+                temperature=self.temperature,
+                google_api_key=settings.GOOGLE_API_KEY,
+            )
+        else:
+            openai_kwargs: dict[str, Any] = {}
+            if self.thinking_effort:
+                openai_kwargs["reasoning"] = {"effort": self.thinking_effort, "summary": "auto"}
+                openai_kwargs["use_responses_api"] = True
+                openai_kwargs["output_version"] = "responses/v1"
+            model = ChatOpenAI(
+                model=self.model_name,
+                temperature=self.temperature,
+                api_key=settings.OPENAI_API_KEY,
+                **openai_kwargs,
+            )
+{%- elif cookiecutter.use_openai %}
+        # OpenAI: ``reasoning`` is honored only by the Responses API.
         openai_kwargs: dict[str, Any] = {}
         if self.thinking_effort:
             openai_kwargs["reasoning"] = {
@@ -193,11 +212,8 @@ class LangChainAssistant:
             api_key=settings.OPENAI_API_KEY,
             **openai_kwargs,
         )
-{%- endif %}
-{%- if cookiecutter.use_anthropic %}
-        # Claude: extended thinking needs an explicit token budget. Map effort
-        # to a budget that scales with the requested depth. ``max_tokens`` must
-        # exceed the budget so the model still has room for the final answer.
+{%- elif cookiecutter.use_anthropic %}
+        # Claude: extended thinking needs an explicit token budget.
         anthropic_kwargs: dict[str, Any] = {}
         if self.thinking_effort:
             budget = {"low": 1024, "medium": 4096, "high": 16384}.get(
@@ -208,7 +224,6 @@ class LangChainAssistant:
                 "budget_tokens": budget,
             }
             anthropic_kwargs["max_tokens"] = budget + 4096
-            # Anthropic requires temperature=1 when thinking is on.
             anthropic_kwargs["temperature"] = 1.0
         model = ChatAnthropic(
             model=self.model_name,
@@ -216,12 +231,7 @@ class LangChainAssistant:
             api_key=settings.ANTHROPIC_API_KEY,
             **anthropic_kwargs,
         )
-{%- endif %}
-{%- if cookiecutter.use_google %}
-        # Gemini 2.5+ has thinking enabled by default for thinking-capable
-        # models; ``thinking_budget=-1`` (the SDK default) lets the model pick.
-        # We don't currently expose effort — the streaming code surfaces any
-        # ``thought`` chunks the model emits.
+{%- elif cookiecutter.use_google %}
         model = ChatGoogleGenerativeAI(
             model=self.model_name,
             temperature=self.temperature,
@@ -229,7 +239,7 @@ class LangChainAssistant:
         )
 {%- endif %}
 
-        agent = create_agent(
+        return create_agent(
             model=model,
             tools=self._tools,
             system_prompt=self.system_prompt,
@@ -240,8 +250,6 @@ class LangChainAssistant:
                 ToolCallLimitMiddleware(run_limit=15),
             ],
         )
-
-        return agent
 
     @property
     def agent(self) -> CompiledStateGraph:

@@ -209,7 +209,7 @@ class AssistantAgent:
         """Register all tools on the agent."""
 
         @agent.tool_plain
-        def current_datetime() -> str:
+        def current_datetime() -> dict[str, str]:
             """Get the current date and time.
 
             Use this tool when you need to know the current date or time.

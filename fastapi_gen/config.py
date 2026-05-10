@@ -87,6 +87,7 @@ class AuthMode(StrEnum):
 class AIFrameworkType(StrEnum):
     """Supported AI agent frameworks."""
 
+    NONE = "none"  # plain SaaS — no AI/chat/agents generated
     PYDANTIC_AI = "pydantic_ai"
     LANGCHAIN = "langchain"
     LANGGRAPH = "langgraph"
@@ -203,6 +204,40 @@ class EmailProviderType(StrEnum):
     LOG = "log"  # Prints to console — useful for development
 
 
+class NewsletterProviderType(StrEnum):
+    """Dedicated newsletter/audience providers (separate from transactional email)."""
+
+    RESEND = "resend"  # Resend Audiences API
+    MAILCHIMP = "mailchimp"
+    CONVERTKIT = "convertkit"
+
+
+class TenancyMode(StrEnum):
+    """Tenancy architecture for multi-tenancy scenarios."""
+
+    SINGLE = "single"  # Single workspace / single tenant
+    MULTI_ORG = "multi_org"  # Multi-tenant organisations (requires --teams)
+    PLATFORM = "platform"  # Each org owns multiple sub-projects
+
+
+class PaymentProviderType(StrEnum):
+    """Supported payment processors (Stripe is the only fully implemented one)."""
+
+    STRIPE = "stripe"
+    PADDLE = "paddle"
+    LEMONSQUEEZY = "lemonsqueezy"
+    POLAR = "polar"
+
+
+class BillingModelType(StrEnum):
+    """High-level billing model for the generated project."""
+
+    SUBSCRIPTION = "subscription"  # Recurring plans (current default)
+    USAGE = "usage"  # Pure pay-as-you-go credits
+    HYBRID = "hybrid"  # Subscription base + overage credits
+    ONE_TIME = "one_time"  # Single purchase / lifetime deal
+
+
 class RAGFeatures(BaseModel):
     """RAG features."""
 
@@ -246,6 +281,11 @@ class ProjectConfig(BaseModel):
     # Authentication (always JWT + API Key)
     oauth_provider: OAuthProvider = OAuthProvider.NONE
     auth_mode: AuthMode = AuthMode.LOCAL
+    # Comma-separated email domains allowed to register via OAuth (e.g. "example.com,acme.com").
+    # Empty string = allow all domains.
+    allowed_email_domains: str = ""
+    # Email address to auto-promote to app-admin on first seed/startup.
+    seed_admin_email: str = ""
     # When auth_mode=delegated: use a shared HMAC secret instead of fetching
     # public keys from a JWKS URL. Simpler integration when client backend
     # signs short-lived tokens for our backend with a known secret. Default
@@ -287,6 +327,12 @@ class ProjectConfig(BaseModel):
     use_telegram: bool = False
     use_slack: bool = False
     enable_cors: bool = True
+    # Comma-separated embed origins for iframe CORS + CSP frame-ancestors.
+    # Empty string keeps the default "frame-ancestors 'none'".
+    embed_allowed_origins: str = ""
+    # Load brand colour/logo from BRAND_COLOR / BRAND_LOGO_URL env vars at runtime
+    # instead of baking them in at generation time.
+    enable_brand_from_config: bool = False
 
     # Dev tools
     enable_pytest: bool = True
@@ -322,11 +368,17 @@ class ProjectConfig(BaseModel):
     billing_credits_per_usd: int = 1000
     billing_credits_low_threshold: int = 100
     billing_credits_free_tier_grant: int = 500
+    enable_per_org_quotas: bool = False
+    payment_provider: PaymentProviderType = PaymentProviderType.STRIPE
+    billing_model: BillingModelType = BillingModelType.SUBSCRIPTION
+    # Tenancy architecture (single = default one-workspace app)
+    tenancy: TenancyMode = TenancyMode.SINGLE
 
     # Email
     enable_email: bool = False
     email_provider: EmailProviderType = EmailProviderType.LOG
     enable_newsletter_signup: bool = False
+    newsletter_provider: NewsletterProviderType = NewsletterProviderType.RESEND
 
     # Admin features (visible in frontend admin panel)
     enable_admin_features_users: bool = True
@@ -346,12 +398,19 @@ class ProjectConfig(BaseModel):
     enable_comparison_pages: bool = False
     enable_affiliate_program: bool = False
     enable_status_badge: bool = False
+    enable_storybook: bool = False
 
     @computed_field
     @property
     def project_slug(self) -> str:
         """Return project slug (underscores instead of hyphens)."""
         return self.project_name.replace("-", "_")
+
+    @computed_field
+    @property
+    def use_ai(self) -> bool:
+        """True when an AI framework is selected (i.e. ai_framework != none)."""
+        return self.ai_framework != AIFrameworkType.NONE
 
     @computed_field
     @property
@@ -388,9 +447,14 @@ class ProjectConfig(BaseModel):
             raise ValueError("SQLModel requires PostgreSQL or SQLite database")
         if self.enable_caching and not self.enable_redis:
             raise ValueError("Caching requires Redis to be enabled")
-        if self.llm_provider == LLMProviderType.OPENROUTER and self.ai_framework not in (
-            AIFrameworkType.PYDANTIC_AI,
-            AIFrameworkType.PYDANTIC_DEEP,
+        if (
+            self.ai_framework != AIFrameworkType.NONE
+            and self.llm_provider == LLMProviderType.OPENROUTER
+            and self.ai_framework
+            not in (
+                AIFrameworkType.PYDANTIC_AI,
+                AIFrameworkType.PYDANTIC_DEEP,
+            )
         ):
             raise ValueError(
                 f"OpenRouter is only supported with PydanticAI or PydanticDeep, "
@@ -430,6 +494,28 @@ class ProjectConfig(BaseModel):
                 "CrewAI is incompatible with Logfire — CrewAI pins an older "
                 "opentelemetry-sdk that conflicts with current logfire. "
                 "Disable Logfire (enable_logfire=False) when using CrewAI."
+            )
+
+        # --no-ai: RAG and websockets require an AI framework
+        if not self.use_ai and self.rag_features.enable_rag:
+            raise ValueError(
+                "--rag requires an AI framework. "
+                "Quick fix: set --ai-framework pydantic_ai (or any other), or drop --rag."
+            )
+        if not self.use_ai and self.enable_langsmith:
+            raise ValueError("--langsmith requires an AI framework. Quick fix: drop --langsmith.")
+
+        # Tenancy: multi_org / platform imply teams
+        if self.tenancy != TenancyMode.SINGLE and not self.enable_teams:
+            raise ValueError(
+                f"--tenancy={self.tenancy.value} requires --teams "
+                "(multi-org and platform tenancy are built on the organisations feature)."
+            )
+
+        # per_org_quotas requires teams
+        if self.enable_per_org_quotas and not self.enable_teams:
+            raise ValueError(
+                "--per-org-quotas requires --teams (quotas are scoped to organisations)."
             )
 
         # Admin panel requires SQLAlchemy (SQLAdmin doesn't fully support SQLModel)
@@ -521,13 +607,11 @@ class ProjectConfig(BaseModel):
             and not self.rag_features.enable_rag
         ):
             raise ValueError(
-                "Reranker requires RAG to be enabled. "
-                "Quick fix: add --rag, or set --reranker none."
+                "Reranker requires RAG to be enabled. Quick fix: add --rag, or set --reranker none."
             )
         if self.rag_features.enable_image_description and not self.rag_features.enable_rag:
             raise ValueError(
-                "RAG image description requires RAG to be enabled. "
-                "Quick fix: add --rag."
+                "RAG image description requires RAG to be enabled. Quick fix: add --rag."
             )
 
         # Frontend-dependent surfaces
@@ -540,6 +624,11 @@ class ProjectConfig(BaseModel):
             raise ValueError(
                 "OAuth requires a frontend for the callback page. "
                 "Quick fix: add --frontend nextjs, or set --oauth-provider none."
+            )
+        if self.enable_brand_from_config and self.frontend == FrontendType.NONE:
+            raise ValueError(
+                "--brand-from-config requires a frontend (the BrandOverride component lives in Next.js). "
+                "Quick fix: add --frontend nextjs, or drop --brand-from-config."
             )
 
         # Kubernetes implies Docker
@@ -579,10 +668,7 @@ class ProjectConfig(BaseModel):
                 "--shared-secret-jwt only applies when --auth-mode=delegated. "
                 "Quick fix: add --auth-mode delegated, or drop --shared-secret-jwt."
             )
-        if (
-            self.enable_external_user_id_in_conversations
-            and self.auth_mode != AuthMode.DELEGATED
-        ):
+        if self.enable_external_user_id_in_conversations and self.auth_mode != AuthMode.DELEGATED:
             raise ValueError(
                 "--external-user-id is meaningful only with --auth-mode=delegated "
                 "(it denormalizes the IdP `sub` claim onto conversations). "
@@ -623,10 +709,15 @@ class ProjectConfig(BaseModel):
             "use_jwt": True,
             "use_api_key": True,
             "use_auth": True,
-            # OAuth
+            # OAuth + Auth restrictions
             "oauth_provider": self.oauth_provider.value,
             "enable_oauth": self.oauth_provider != OAuthProvider.NONE,
             "enable_oauth_google": self.oauth_provider == OAuthProvider.GOOGLE,
+            "allowed_email_domains": self.allowed_email_domains,
+            "enable_email_domain_allowlist": bool(self.allowed_email_domains.strip()),
+            # Admin seeding
+            "seed_admin_email": self.seed_admin_email,
+            "enable_seed_admin": bool(self.seed_admin_email.strip()),
             # Auth mode (local password+OAuth vs delegated/IdP)
             "auth_mode": self.auth_mode.value,
             "use_local_auth": self.auth_mode == AuthMode.LOCAL,
@@ -687,17 +778,16 @@ class ProjectConfig(BaseModel):
             "sandbox_backend": self.sandbox_backend,
             "llm_provider": self.llm_provider.value,
             # ALL turns on every provider so users can pick the model at runtime.
-            "use_openai": self.llm_provider
-            in (LLMProviderType.OPENAI, LLMProviderType.ALL),
-            "use_anthropic": self.llm_provider
-            in (LLMProviderType.ANTHROPIC, LLMProviderType.ALL),
-            "use_google": self.llm_provider
-            in (LLMProviderType.GOOGLE, LLMProviderType.ALL),
+            "use_openai": self.llm_provider in (LLMProviderType.OPENAI, LLMProviderType.ALL),
+            "use_anthropic": self.llm_provider in (LLMProviderType.ANTHROPIC, LLMProviderType.ALL),
+            "use_google": self.llm_provider in (LLMProviderType.GOOGLE, LLMProviderType.ALL),
             "use_openrouter": self.llm_provider
             in (LLMProviderType.OPENROUTER, LLMProviderType.ALL),
             "use_all_providers": self.llm_provider == LLMProviderType.ALL,
             # Legacy fixed values (always enabled, not user-configurable)
-            "enable_conversation_persistence": True,
+            # AI
+            "use_ai": self.use_ai,
+            "enable_conversation_persistence": self.use_ai,
             "enable_langsmith": self.enable_langsmith,
             "enable_web_search": self.enable_web_search,
             "enable_web_fetch": self.enable_web_fetch,
@@ -708,6 +798,10 @@ class ProjectConfig(BaseModel):
             "websocket_auth_api_key": False,
             "websocket_auth_none": False,
             "enable_cors": self.enable_cors,
+            # Embed / brand
+            "embed_allowed_origins": self.embed_allowed_origins,
+            "enable_embed_mode": bool(self.embed_allowed_origins.strip()),
+            "enable_brand_from_config": self.enable_brand_from_config,
             # Frontend features
             "enable_i18n": self.enable_i18n,
             # Example CRUD scaffold (Items resource — pattern reference for new domains)
@@ -830,10 +924,33 @@ class ProjectConfig(BaseModel):
             "billing_credits_per_usd": self.billing_credits_per_usd,
             "billing_credits_low_threshold": self.billing_credits_low_threshold,
             "billing_credits_free_tier_grant": self.billing_credits_free_tier_grant,
+            "enable_per_org_quotas": self.enable_per_org_quotas,
+            "payment_provider": self.payment_provider.value,
+            "payment_provider_stripe": self.payment_provider == PaymentProviderType.STRIPE,
+            "payment_provider_paddle": self.payment_provider == PaymentProviderType.PADDLE,
+            "payment_provider_lemonsqueezy": self.payment_provider
+            == PaymentProviderType.LEMONSQUEEZY,
+            "payment_provider_polar": self.payment_provider == PaymentProviderType.POLAR,
+            "billing_model": self.billing_model.value,
+            "billing_model_subscription": self.billing_model == BillingModelType.SUBSCRIPTION,
+            "billing_model_usage": self.billing_model == BillingModelType.USAGE,
+            "billing_model_hybrid": self.billing_model == BillingModelType.HYBRID,
+            "billing_model_one_time": self.billing_model == BillingModelType.ONE_TIME,
+            # Tenancy
+            "tenancy": self.tenancy.value,
+            "tenancy_single": self.tenancy == TenancyMode.SINGLE,
+            "tenancy_multi_org": self.tenancy == TenancyMode.MULTI_ORG,
+            "tenancy_platform": self.tenancy == TenancyMode.PLATFORM,
             # Email
             "enable_email": self.enable_email,
             "email_provider": self.email_provider.value,
             "enable_newsletter_signup": self.enable_newsletter_signup,
+            "newsletter_provider": self.newsletter_provider.value,
+            "newsletter_provider_resend": self.newsletter_provider == NewsletterProviderType.RESEND,
+            "newsletter_provider_mailchimp": self.newsletter_provider
+            == NewsletterProviderType.MAILCHIMP,
+            "newsletter_provider_convertkit": self.newsletter_provider
+            == NewsletterProviderType.CONVERTKIT,
             # Admin features
             "enable_admin_features_users": self.enable_admin_features_users,
             "enable_admin_features_organizations": self.enable_admin_features_organizations,
@@ -849,4 +966,5 @@ class ProjectConfig(BaseModel):
             "enable_comparison_pages": self.enable_comparison_pages,
             "enable_affiliate_program": self.enable_affiliate_program,
             "enable_status_badge": self.enable_status_badge,
+            "enable_storybook": self.enable_storybook,
         }

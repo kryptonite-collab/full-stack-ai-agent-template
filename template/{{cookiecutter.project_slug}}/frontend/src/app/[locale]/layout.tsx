@@ -6,6 +6,9 @@ import { notFound } from "next/navigation";
 import { CookieBanner } from "@/components/marketing/cookie-banner";
 import { locales, type Locale } from "@/i18n";
 import { OG_LOCALE, SITE } from "@/lib/seo";
+{%- if cookiecutter.enable_brand_from_config %}
+import { BrandOverride } from "@/components/brand-override";
+{%- endif %}
 
 import { Providers } from "../providers";
 
@@ -54,6 +57,9 @@ export default async function LocaleLayout({
   return (
     <Providers>
       <NextIntlClientProvider messages={messages}>
+{%- if cookiecutter.enable_brand_from_config %}
+        <BrandOverride />
+{%- endif %}
         <a href="#main" className="skip-link">
           Skip to content
         </a>

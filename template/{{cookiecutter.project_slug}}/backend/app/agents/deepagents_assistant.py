@@ -292,7 +292,41 @@ class DeepAgentsAssistant:
 
     def _create_model(self) -> BaseChatModel:
         """Create the LLM model for DeepAgents."""
-{%- if cookiecutter.use_openai %}
+{%- if cookiecutter.use_all_providers %}
+        lowered = self.model_name.lower()
+        if lowered.startswith(("claude-", "claude/")):
+            anthropic_kwargs: dict[str, Any] = {}
+            if self.thinking_effort:
+                budget = {"low": 1024, "medium": 4096, "high": 16384}.get(self.thinking_effort, 4096)
+                anthropic_kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
+                anthropic_kwargs["max_tokens"] = budget + 4096
+                anthropic_kwargs["temperature"] = 1.0
+            return ChatAnthropic(
+                model=self.model_name,
+                temperature=anthropic_kwargs.pop("temperature", self.temperature),
+                api_key=settings.ANTHROPIC_API_KEY,
+                streaming=True,
+                **anthropic_kwargs,
+            )
+        if lowered.startswith("gemini"):
+            return ChatGoogleGenerativeAI(
+                model=self.model_name,
+                temperature=self.temperature,
+                google_api_key=settings.GOOGLE_API_KEY,
+            )
+        openai_kwargs: dict[str, Any] = {}
+        if self.thinking_effort:
+            openai_kwargs["reasoning"] = {"effort": self.thinking_effort, "summary": "auto"}
+            openai_kwargs["use_responses_api"] = True
+            openai_kwargs["output_version"] = "responses/v1"
+        return ChatOpenAI(
+            model=self.model_name,
+            temperature=self.temperature,
+            api_key=settings.OPENAI_API_KEY,
+            streaming=True,
+            **openai_kwargs,
+        )
+{%- elif cookiecutter.use_openai %}
         # OpenAI: ``reasoning`` is honored only by the Responses API. Summary
         # blocks stream through as content; the model never returns raw CoT.
         openai_kwargs: dict[str, Any] = {}
@@ -310,8 +344,7 @@ class DeepAgentsAssistant:
             streaming=True,
             **openai_kwargs,
         )
-{%- endif %}
-{%- if cookiecutter.use_anthropic %}
+{%- elif cookiecutter.use_anthropic %}
         # Claude: extended thinking needs an explicit token budget; Anthropic
         # forces ``temperature=1`` whenever thinking is on.
         anthropic_kwargs: dict[str, Any] = {}
@@ -332,8 +365,7 @@ class DeepAgentsAssistant:
             streaming=True,
             **anthropic_kwargs,
         )
-{%- endif %}
-{%- if cookiecutter.use_google %}
+{%- elif cookiecutter.use_google %}
         # Gemini 2.5+ has thinking enabled by default for thinking-capable
         # models. The streaming code surfaces any ``thought`` blocks emitted.
         return ChatGoogleGenerativeAI(

@@ -10,6 +10,7 @@ from rich.text import Text
 
 from .config import (
     AIFrameworkType,
+    AuthMode,
     BackgroundTaskType,
     BrandColorType,
     CIType,
@@ -93,7 +94,7 @@ def _confirm_with_back(message: str, *, default: bool = False, allow_back: bool 
     return answer
 
 
-def _section_gate(section_name: str, *, can_go_back: bool) -> bool:
+def _section_gate(_section_name: str, *, can_go_back: bool) -> bool:  # noqa: ARG001
     """Pre-section gate — currently a no-op pass-through.
 
     Originally prompted "Continue / ← Back" before each section but it added
@@ -283,6 +284,73 @@ def prompt_oauth() -> OAuthProvider:
             ).ask()
         ),
     )
+
+
+def prompt_auth_mode(
+    oauth_provider: OAuthProvider,
+    enable_session_management: bool,
+) -> tuple[AuthMode, bool, bool]:
+    """Prompt for authentication mode.
+
+    Returns (auth_mode, delegated_auth_use_shared_secret, enable_external_user_id_in_conversations).
+    """
+    console.print()
+    console.print("[bold cyan]Authentication Mode[/]")
+    console.print()
+
+    choices = [
+        questionary.Choice(
+            "Local — backend owns auth: email/password, optional OAuth, JWTs issued by this app",
+            value=AuthMode.LOCAL,
+        ),
+        questionary.Choice(
+            "Delegated — external IdP (Auth0, Clerk, Cognito, Keycloak): "
+            "backend validates IdP JWTs, no registration UI",
+            value=AuthMode.DELEGATED,
+        ),
+    ]
+
+    auth_mode = cast(
+        AuthMode,
+        _check_cancelled(
+            questionary.select(
+                "Authentication strategy:",
+                choices=choices,
+                default=choices[0],
+            ).ask()
+        ),
+    )
+
+    if auth_mode == AuthMode.LOCAL:
+        return AuthMode.LOCAL, False, False
+
+    # DELEGATED — warn about incompatible options selected in earlier steps
+    if oauth_provider != OAuthProvider.NONE or enable_session_management:
+        console.print()
+        console.print(
+            "[yellow]Note:[/] Delegated auth is incompatible with OAuth social login and "
+            "session management — those will be disabled automatically."
+        )
+
+    use_shared_secret = _check_cancelled(
+        questionary.confirm(
+            "Use a shared HMAC secret instead of a JWKS URL?\n"
+            "  Yes = simpler setup; client backend signs short-lived tokens with a known secret\n"
+            "  No  = standard JWKS endpoint (Auth0, Cognito, Keycloak, …)",
+            default=False,
+        ).ask()
+    )
+
+    enable_external_user_id = _check_cancelled(
+        questionary.confirm(
+            "Denormalize the IdP user ID (sub claim) onto Conversation rows?\n"
+            "  Lets client APIs query conversations by the IdP user identifier "
+            "without exposing internal UUIDs",
+            default=False,
+        ).ask()
+    )
+
+    return AuthMode.DELEGATED, bool(use_shared_secret), bool(enable_external_user_id)
 
 
 def prompt_logfire(
@@ -671,6 +739,10 @@ def prompt_ai_framework() -> AIFrameworkType:
             "PydanticDeep (deep agentic coding, Docker sandbox)",
             value=AIFrameworkType.PYDANTIC_DEEP,
         ),
+        questionary.Choice(
+            "None — plain SaaS (no AI/chat/agents generated)",
+            value=AIFrameworkType.NONE,
+        ),
     ]
 
     return cast(
@@ -796,7 +868,7 @@ def prompt_langsmith() -> bool:
     )
 
 
-def prompt_rag_config() -> RAGFeatures:
+def prompt_rag_config(database: DatabaseType = DatabaseType.POSTGRESQL) -> RAGFeatures:
     """Prompt for RAG configuration."""
 
     console.print()
@@ -820,23 +892,29 @@ def prompt_rag_config() -> RAGFeatures:
 
     # In RAG is enabled, ask for features
     if enable_rag:
+        vector_store_choices = [
+            questionary.Choice(
+                "Milvus (production, Docker required)", value=VectorStoreType.MILVUS
+            ),
+            questionary.Choice(
+                "Qdrant (production, Docker required)", value=VectorStoreType.QDRANT
+            ),
+            questionary.Choice(
+                "ChromaDB (embedded, no Docker needed)", value=VectorStoreType.CHROMADB
+            ),
+        ]
+        # pgvector requires PostgreSQL — only offer it when that database is selected
+        if database == DatabaseType.POSTGRESQL:
+            vector_store_choices.append(
+                questionary.Choice(
+                    "pgvector (uses existing PostgreSQL)", value=VectorStoreType.PGVECTOR
+                )
+            )
+
         vector_store_choice = _check_cancelled(
             questionary.select(
                 "Select vector store backend:",
-                choices=[
-                    questionary.Choice(
-                        "Milvus (production, Docker required)", value=VectorStoreType.MILVUS
-                    ),
-                    questionary.Choice(
-                        "Qdrant (production, Docker required)", value=VectorStoreType.QDRANT
-                    ),
-                    questionary.Choice(
-                        "ChromaDB (embedded, no Docker needed)", value=VectorStoreType.CHROMADB
-                    ),
-                    questionary.Choice(
-                        "pgvector (uses existing PostgreSQL)", value=VectorStoreType.PGVECTOR
-                    ),
-                ],
+                choices=vector_store_choices,
                 default=VectorStoreType.MILVUS,
             ).ask()
         )
@@ -1034,9 +1112,17 @@ def prompt_email_config() -> tuple[bool, EmailProviderType, bool]:
             questionary.select(
                 "Select email provider:",
                 choices=[
-                    questionary.Choice("Resend (recommended — modern API, great DX)", value=EmailProviderType.RESEND),
-                    questionary.Choice("SMTP (any SMTP server — SendGrid, SES, Mailgun…)", value=EmailProviderType.SMTP),
-                    questionary.Choice("Log (prints to console — development only)", value=EmailProviderType.LOG),
+                    questionary.Choice(
+                        "Resend (recommended — modern API, great DX)",
+                        value=EmailProviderType.RESEND,
+                    ),
+                    questionary.Choice(
+                        "SMTP (any SMTP server — SendGrid, SES, Mailgun…)",
+                        value=EmailProviderType.SMTP,
+                    ),
+                    questionary.Choice(
+                        "Log (prints to console — development only)", value=EmailProviderType.LOG
+                    ),
                 ],
                 default=EmailProviderType.RESEND,
             ).ask()
@@ -1056,7 +1142,7 @@ def prompt_email_config() -> tuple[bool, EmailProviderType, bool]:
     return True, provider, enable_newsletter
 
 
-def prompt_teams_billing(database: DatabaseType) -> dict[str, Any]:
+def prompt_teams_billing(database: DatabaseType) -> dict[str, Any]:  # noqa: ARG001
     """Prompt for Teams & Billing configuration.
 
     Args:
@@ -1283,6 +1369,9 @@ def run_interactive_prompts() -> ProjectConfig:
         "reverse_proxy": ReverseProxyType.NONE,
         "brand_color": BrandColorType.BLUE,
         "marketing_features": {},
+        "auth_mode": AuthMode.LOCAL,
+        "delegated_auth_use_shared_secret": False,
+        "enable_external_user_id_in_conversations": False,
     }
 
     # Each step is a callable taking state -> mutating it in-place. We store
@@ -1313,6 +1402,18 @@ def run_interactive_prompts() -> ProjectConfig:
             ).ask()
         )
 
+    def step_auth_mode() -> None:
+        auth_mode, use_shared_secret, external_user_id = prompt_auth_mode(
+            oauth_provider=state.get("oauth_provider", OAuthProvider.NONE),
+            enable_session_management=state.get("enable_session_management", False),
+        )
+        state["auth_mode"] = auth_mode
+        state["delegated_auth_use_shared_secret"] = use_shared_secret
+        state["enable_external_user_id_in_conversations"] = external_user_id
+        if auth_mode == AuthMode.DELEGATED:
+            state["oauth_provider"] = OAuthProvider.NONE
+            state["enable_session_management"] = False
+
     def step_background_tasks() -> None:
         state["background_tasks"] = prompt_background_tasks()
 
@@ -1339,6 +1440,15 @@ def run_interactive_prompts() -> ProjectConfig:
 
     def step_frontend() -> None:
         state["frontend"] = prompt_frontend()
+        if (
+            state["frontend"] == FrontendType.NONE
+            and state.get("oauth_provider", OAuthProvider.NONE) != OAuthProvider.NONE
+        ):
+            console.print()
+            console.print(
+                "[yellow]Note:[/] OAuth social login requires a frontend — resetting to None."
+            )
+            state["oauth_provider"] = OAuthProvider.NONE
 
     def step_python_version() -> None:
         state["python_version"] = prompt_python_version()
@@ -1350,9 +1460,16 @@ def run_interactive_prompts() -> ProjectConfig:
         state["ai_framework"] = prompt_ai_framework()
 
     def step_logfire() -> None:
-        state["enable_logfire"], state["logfire_features"] = prompt_logfire(
-            state["background_tasks"], state["ai_framework"]
-        )
+        # Skip Logfire prompt entirely when no AI framework (CrewAI conflict doesn't apply)
+        if state["ai_framework"] == AIFrameworkType.NONE:
+            state["enable_logfire"] = True
+            from .config import LogfireFeatures
+
+            state["logfire_features"] = LogfireFeatures()
+        else:
+            state["enable_logfire"], state["logfire_features"] = prompt_logfire(
+                state["background_tasks"], state["ai_framework"]
+            )
 
     def step_sandbox_backend() -> None:
         if state["ai_framework"] in (
@@ -1364,7 +1481,10 @@ def run_interactive_prompts() -> ProjectConfig:
             state["sandbox_backend"] = "state"
 
     def step_llm_provider() -> None:
-        state["llm_provider"] = prompt_llm_provider(state["ai_framework"])
+        if state["ai_framework"] == AIFrameworkType.NONE:
+            state["llm_provider"] = LLMProviderType.OPENAI  # irrelevant, but must be valid
+        else:
+            state["llm_provider"] = prompt_llm_provider(state["ai_framework"])
 
     def step_pydantic_capabilities() -> None:
         if state["ai_framework"] == AIFrameworkType.PYDANTIC_AI:
@@ -1377,7 +1497,23 @@ def run_interactive_prompts() -> ProjectConfig:
             state["enable_web_fetch"] = False
 
     def step_rag_config() -> None:
-        state["rag_features"] = prompt_rag_config()
+        if state["ai_framework"] == AIFrameworkType.NONE:
+            state["rag_features"] = RAGFeatures()  # RAG disabled when no AI
+        else:
+            state["rag_features"] = prompt_rag_config(database=state["database"])
+            # Milvus/Qdrant require Docker — auto-enable if the user didn't select it
+            if (
+                state["rag_features"].enable_rag
+                and state["rag_features"].vector_store
+                in (VectorStoreType.MILVUS, VectorStoreType.QDRANT)
+                and not state["dev_tools"].get("enable_docker", False)
+            ):
+                console.print()
+                console.print(
+                    f"[yellow]Note:[/] {state['rag_features'].vector_store.value.title()} requires Docker — "
+                    "enabling Docker automatically."
+                )
+                state["dev_tools"]["enable_docker"] = True
 
     def step_langsmith() -> None:
         if state["ai_framework"] in (
@@ -1390,7 +1526,11 @@ def run_interactive_prompts() -> ProjectConfig:
             state["enable_langsmith"] = False
 
     def step_channels() -> None:
-        state["use_telegram"], state["use_slack"] = prompt_channels()
+        if state["ai_framework"] == AIFrameworkType.NONE:
+            state["use_telegram"] = False
+            state["use_slack"] = False
+        else:
+            state["use_telegram"], state["use_slack"] = prompt_channels()
 
     def step_teams_billing() -> None:
         state["teams_billing"] = prompt_teams_billing(database=state["database"])
@@ -1430,6 +1570,7 @@ def run_interactive_prompts() -> ProjectConfig:
         ("ORM Type", step_orm_type),
         ("OAuth Social Login", step_oauth),
         ("Session Management", step_session),
+        ("Authentication Mode", step_auth_mode),
         ("Background Tasks", step_background_tasks),
         ("Integrations", step_integrations),
         ("Dev Tools", step_dev_tools),
@@ -1471,6 +1612,9 @@ def run_interactive_prompts() -> ProjectConfig:
     orm_type = state["orm_type"]
     oauth_provider = state["oauth_provider"]
     enable_session_management = state["enable_session_management"]
+    auth_mode = state["auth_mode"]
+    delegated_auth_use_shared_secret = state["delegated_auth_use_shared_secret"]
+    enable_external_user_id_in_conversations = state["enable_external_user_id_in_conversations"]
     background_tasks = state["background_tasks"]
     integrations = state["integrations"]
     dev_tools = state["dev_tools"]
@@ -1513,6 +1657,9 @@ def run_interactive_prompts() -> ProjectConfig:
         orm_type=orm_type,
         oauth_provider=oauth_provider,
         enable_session_management=enable_session_management,
+        auth_mode=auth_mode,
+        delegated_auth_use_shared_secret=delegated_auth_use_shared_secret,
+        enable_external_user_id_in_conversations=enable_external_user_id_in_conversations,
         enable_logfire=enable_logfire,
         logfire_features=logfire_features,
         background_tasks=background_tasks,
@@ -1580,12 +1727,15 @@ def show_summary(config: ProjectConfig) -> None:
         enabled_features.append(rate_info)
     if config.enable_admin_panel:
         enabled_features.append("SQL Admin Panel")
-    ai_info = f"AI Agent ({config.ai_framework.value}, {config.llm_provider.value})"
-    if config.ai_framework in (AIFrameworkType.DEEPAGENTS, AIFrameworkType.PYDANTIC_DEEP):
-        ai_info += f", sandbox: {config.sandbox_backend}"
-    if config.rag_features.enable_rag:
-        ai_info += f" + RAG ({config.rag_features.vector_store.value})"
-    enabled_features.append(ai_info)
+    if config.ai_framework == AIFrameworkType.NONE:
+        enabled_features.append("AI: disabled (plain SaaS)")
+    else:
+        ai_info = f"AI Agent ({config.ai_framework.value}, {config.llm_provider.value})"
+        if config.ai_framework in (AIFrameworkType.DEEPAGENTS, AIFrameworkType.PYDANTIC_DEEP):
+            ai_info += f", sandbox: {config.sandbox_backend}"
+        if config.rag_features.enable_rag:
+            ai_info += f" + RAG ({config.rag_features.vector_store.value})"
+        enabled_features.append(ai_info)
     if config.enable_webhooks:
         enabled_features.append("Webhooks")
     if config.use_telegram:

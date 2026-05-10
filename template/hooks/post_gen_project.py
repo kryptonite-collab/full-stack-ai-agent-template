@@ -64,6 +64,8 @@ use_external_user_id_in_conversations = (
     "{{ cookiecutter.use_external_user_id_in_conversations }}" == "True"
 )
 include_example_crud = "{{ cookiecutter.include_example_crud }}" == "True"
+use_ai = "{{ cookiecutter.use_ai }}" == "True"
+enable_storybook = "{{ cookiecutter.enable_storybook }}" == "True"
 
 
 def remove_file(path: str) -> None:
@@ -124,6 +126,43 @@ if not use_pydantic_deep:
     remove_file(os.path.join(backend_app, "agents", "pydantic_deep_assistant.py"))
 if not enable_web_search:
     remove_file(os.path.join(backend_app, "agents", "tools", "web_search.py"))
+
+# --- No-AI mode: remove all AI/chat/conversation files ---
+if not use_ai:
+    # Entire agents folder
+    remove_dir(os.path.join(backend_app, "agents"))
+    # Agent & conversation services
+    remove_file(os.path.join(backend_app, "services", "agent.py"))
+    remove_file(os.path.join(backend_app, "services", "agent_session.py"))
+    remove_file(os.path.join(backend_app, "services", "agent_invocation.py"))
+    remove_file(os.path.join(backend_app, "services", "conversation.py"))
+    # Conversation model / repo / schema
+    remove_file(os.path.join(backend_app, "db", "models", "conversation.py"))
+    remove_file(os.path.join(backend_app, "repositories", "conversation.py"))
+    remove_file(os.path.join(backend_app, "schemas", "conversation.py"))
+    remove_file(os.path.join(backend_app, "schemas", "conversation_share.py"))
+    remove_file(os.path.join(backend_app, "schemas", "message_rating.py"))
+    # Chat & conversation routes
+    remove_file(os.path.join(backend_app, "api", "routes", "v1", "chat.py"))
+    remove_file(os.path.join(backend_app, "api", "routes", "v1", "conversations.py"))
+    remove_file(os.path.join(backend_app, "api", "routes", "v1", "message_ratings.py"))
+    remove_file(os.path.join(backend_app, "api", "routes", "v1", "me_slash_commands.py"))
+    # Slash commands model / repo / schema / service
+    remove_file(os.path.join(backend_app, "db", "models", "user_slash_command.py"))
+    remove_file(os.path.join(backend_app, "repositories", "user_slash_command.py"))
+    remove_file(os.path.join(backend_app, "schemas", "user_slash_command.py"))
+    remove_file(os.path.join(backend_app, "services", "user_slash_command.py"))
+    # Logfire (AI observability) — only remove if no other use
+    # Keep logfire_setup.py if logfire is enabled for non-AI tracing (FastAPI/DB)
+    # Frontend chat UI
+    if use_frontend:
+        frontend_src = os.path.join(os.getcwd(), "frontend", "src")
+        remove_dir(os.path.join(frontend_src, "app", "[locale]", "chat"))
+        remove_dir(os.path.join(frontend_src, "components", "chat"))
+        remove_file(os.path.join(frontend_src, "components", "dashboard", "conversation-list.tsx"))
+        # Admin conversations / ratings pages
+        remove_dir(os.path.join(frontend_src, "app", "[locale]", "admin", "conversations"))
+        remove_dir(os.path.join(frontend_src, "app", "[locale]", "admin", "ratings"))
 
 # --- Webhook files ---
 if not enable_webhooks or not use_database:
@@ -479,6 +518,14 @@ else:
                     "# Get your write token from: https://logfire.pydantic.dev",
                     "OTEL_EXPORTER_OTLP_ENDPOINT=https://logfire-api.pydantic.dev",
                     "OTEL_EXPORTER_OTLP_HEADERS=Authorization=your-logfire-write-token",
+                ])
+            if "{{ cookiecutter.enable_brand_from_config }}" == "True":
+                env_lines.extend([
+                    "",
+                    "# Runtime brand override (white-label)",
+                    "# Set NEXT_PUBLIC_BRAND_COLOR to one of: blue, green, red, violet, orange",
+                    "NEXT_PUBLIC_BRAND_COLOR={{ cookiecutter.brand_color }}",
+                    "NEXT_PUBLIC_BRAND_LOGO_URL=",
                 ])
 
             with open(frontend_env_local, "w") as f:
@@ -946,5 +993,13 @@ if not enable_i18n and use_frontend:
                     remove_file(target)
                 elif os.path.isdir(target):
                     remove_dir(target)
+
+# Storybook: remove .storybook/ when not requested
+if not enable_storybook and use_frontend:
+    frontend_root = os.path.join(os.getcwd(), "frontend")
+    storybook_dir = os.path.join(frontend_root, ".storybook")
+    if os.path.exists(storybook_dir):
+        shutil.rmtree(storybook_dir)
+        print("Removed frontend/.storybook/ (storybook not enabled)")
 
 print("Project generated successfully!")

@@ -206,7 +206,7 @@ async def search_knowledge_base(
     return _format_results(results)
 
 
-def _run_async_search(query: str, collection: str, top_k: int) -> str:
+def _run_async_search(query: str, collection: str | None, top_k: int) -> str:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
@@ -217,7 +217,7 @@ def _run_async_search(query: str, collection: str, top_k: int) -> str:
 
 def search_knowledge_base_sync(
     query: str,
-    collection: str = "documents",
+    collection: str | None = None,
     top_k: int = 5,
 ) -> str:
     """Synchronous wrapper for search_knowledge_base. Use in CrewAI agents."""

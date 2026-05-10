@@ -229,6 +229,50 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[{% if cookiecutter.enable_red
         logger.error("Slack: failed to start Socket Mode: %s", _slack_exc)
 {%- endif %}
 
+{%- if cookiecutter.enable_seed_admin and (cookiecutter.use_postgresql or cookiecutter.use_sqlite or cookiecutter.use_mongodb) %}
+    # === Auto-promote FIRST_ADMIN_EMAIL to app-admin ===
+    from app.core.config import settings as _settings
+    _first_admin = getattr(_settings, "FIRST_ADMIN_EMAIL", "")
+    if _first_admin:
+{%- if cookiecutter.use_postgresql %}
+        from app.db.session import get_db_context as _get_db_ctx
+        from app.repositories import user_repo as _user_repo
+        try:
+            async with _get_db_ctx() as _db:
+                _u = await _user_repo.get_by_email(_db, _first_admin)
+                if _u and not getattr(_u, "is_app_admin", False):
+                    _u.is_app_admin = True
+                    await _db.flush()
+                    logger.info("Auto-promoted %s to app-admin (FIRST_ADMIN_EMAIL)", _first_admin)
+        except Exception as _e:
+            logger.warning("FIRST_ADMIN_EMAIL promotion failed: %s", _e)
+{%- elif cookiecutter.use_sqlite %}
+        from app.db.session import get_db_session as _get_db_s
+        from app.repositories import user_repo as _user_repo
+        try:
+            with next(_get_db_s()) as _db:
+                _u = _user_repo.get_by_email(_db, _first_admin)
+                if _u and not getattr(_u, "is_app_admin", False):
+                    _u.is_app_admin = True
+                    _db.flush()
+                    logger.info("Auto-promoted %s to app-admin (FIRST_ADMIN_EMAIL)", _first_admin)
+        except Exception as _e:
+            logger.warning("FIRST_ADMIN_EMAIL promotion failed: %s", _e)
+{%- elif cookiecutter.use_mongodb %}
+        from app.db.session import init_db as _init_db
+        from app.repositories import user_repo as _user_repo
+        try:
+            await _init_db()
+            _u = await _user_repo.get_by_email(_first_admin)
+            if _u and not getattr(_u, "is_app_admin", False):
+                _u.is_app_admin = True
+                await _u.save()
+                logger.info("Auto-promoted %s to app-admin (FIRST_ADMIN_EMAIL)", _first_admin)
+        except Exception as _e:
+            logger.warning("FIRST_ADMIN_EMAIL promotion failed: %s", _e)
+{%- endif %}
+{%- endif %}
+
 {%- if cookiecutter.enable_redis or cookiecutter.enable_rag or cookiecutter.use_telegram or cookiecutter.use_slack %}
     yield state
 {%- else %}
@@ -331,20 +375,24 @@ def create_app() -> FastAPI:
             "description": "Session management - view and manage active login sessions",
         },
 {%- endif %}
+{%- if cookiecutter.use_ai %}
         {
             "name": "conversations",
             "description": "AI conversation persistence - manage chat history",
         },
+{%- endif %}
 {%- if cookiecutter.enable_webhooks %}
         {
             "name": "webhooks",
             "description": "Webhook management - subscribe to events and manage deliveries",
         },
 {%- endif %}
+{%- if cookiecutter.use_ai %}
         {
             "name": "agent",
             "description": "AI agent WebSocket endpoint for real-time chat",
         },
+{%- endif %}
 {%- if cookiecutter.enable_websockets %}
         {
             "name": "websocket",

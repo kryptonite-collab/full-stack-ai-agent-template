@@ -265,6 +265,7 @@ def create(
     full_name: str | None = None,
     is_active: bool = True,
     role: str = "user",
+    is_app_admin: bool = False,
 {%- if cookiecutter.enable_oauth %}
     oauth_provider: str | None = None,
     oauth_id: str | None = None,
@@ -280,6 +281,7 @@ def create(
         full_name=full_name,
         is_active=is_active,
         role=role,
+        is_app_admin=is_app_admin,
 {%- if cookiecutter.enable_oauth %}
         oauth_provider=oauth_provider,
         oauth_id=oauth_id,
@@ -425,6 +427,7 @@ async def create(
     full_name: str | None = None,
     is_active: bool = True,
     role: str = "user",
+    is_app_admin: bool = False,
 {%- if cookiecutter.enable_oauth %}
     oauth_provider: str | None = None,
     oauth_id: str | None = None,
@@ -440,6 +443,7 @@ async def create(
         full_name=full_name,
         is_active=is_active,
         role=role,
+        is_app_admin=is_app_admin,
 {%- if cookiecutter.enable_oauth %}
         oauth_provider=oauth_provider,
         oauth_id=oauth_id,

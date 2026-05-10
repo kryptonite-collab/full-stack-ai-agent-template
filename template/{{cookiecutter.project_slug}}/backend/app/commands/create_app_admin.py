@@ -1,4 +1,4 @@
-{%- if cookiecutter.enable_teams and (cookiecutter.use_postgresql or cookiecutter.use_sqlite or cookiecutter.use_mongodb) %}
+{%- if cookiecutter.use_postgresql or cookiecutter.use_sqlite or cookiecutter.use_mongodb %}
 """Grant or revoke the app-admin flag on a user account.
 
 Usage:
@@ -107,5 +107,5 @@ async def _run(email: str, revoke: bool) -> None:
 
 {%- endif %}
 {%- else %}
-"""create-app-admin command — not configured (enable_teams=false)."""
+"""create-app-admin command — not available without a database."""
 {%- endif %}

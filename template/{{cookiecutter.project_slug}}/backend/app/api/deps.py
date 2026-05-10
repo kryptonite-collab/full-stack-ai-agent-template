@@ -489,7 +489,7 @@ async def get_current_active_superuser(
 {%- elif cookiecutter.use_sqlite %}
 
 
-def get_current_user(
+async def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     user_service: UserSvc,
 ) -> User:
@@ -514,7 +514,7 @@ def get_current_user(
     if user_id is None:
         raise AuthenticationError(message="Invalid token payload")
 
-    user = user_service.get_by_id(user_id)
+    user = await user_service.get_by_id(user_id)
     if not user.is_active:
         raise AuthenticationError(message="User account is disabled")
 
@@ -951,7 +951,7 @@ async def get_current_user_ws(
 
     with contextmanager(get_db_session)() as db:
         user_service = UserService(db)
-        user = user_service.get_by_id(user_id)
+        user = await user_service.get_by_id(user_id)
 
         if not user.is_active:
             await websocket.close(code=4001, reason="User account is disabled")
@@ -1124,13 +1124,21 @@ UserSlashCommandSvc = Annotated[
     UserSlashCommandService, Depends(get_user_slash_command_service)
 ]
 {%- endif %}
+{%- if cookiecutter.use_database %}
 from app.services.admin import AdminService
 
 
+{%- if cookiecutter.use_postgresql or cookiecutter.use_sqlite %}
 def get_admin_service(db: DBSession) -> AdminService:
     """Create AdminService instance — used by admin REST routes (always
     available, independent of the optional SQLAdmin UI)."""
     return AdminService(db)
+{%- else %}
+def get_admin_service() -> AdminService:
+    """Create AdminService instance — used by admin REST routes."""
+    return AdminService()
+{%- endif %}
 
 
 AdminSvc = Annotated[AdminService, Depends(get_admin_service)]
+{%- endif %}

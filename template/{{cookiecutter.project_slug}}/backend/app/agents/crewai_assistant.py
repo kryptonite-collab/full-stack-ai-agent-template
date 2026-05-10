@@ -327,21 +327,38 @@ class CrewAIAssistant:
 
     def _get_llm(self):
         """Get LLM instance based on settings."""
-{%- if cookiecutter.use_openai %}
+{%- if cookiecutter.use_all_providers %}
+        lowered = self.model_name.lower()
+        if lowered.startswith(("claude-", "claude/")):
+            return ChatAnthropic(
+                model=self.model_name,
+                temperature=self.temperature,
+                api_key=settings.ANTHROPIC_API_KEY,
+            )
+        if lowered.startswith("gemini"):
+            return ChatGoogleGenerativeAI(
+                model=self.model_name,
+                temperature=self.temperature,
+                google_api_key=settings.GOOGLE_API_KEY,
+            )
         return ChatOpenAI(
             model=self.model_name,
             temperature=self.temperature,
             api_key=settings.OPENAI_API_KEY,
         )
-{%- endif %}
-{%- if cookiecutter.use_anthropic %}
+{%- elif cookiecutter.use_openai %}
+        return ChatOpenAI(
+            model=self.model_name,
+            temperature=self.temperature,
+            api_key=settings.OPENAI_API_KEY,
+        )
+{%- elif cookiecutter.use_anthropic %}
         return ChatAnthropic(
             model=self.model_name,
             temperature=self.temperature,
             api_key=settings.ANTHROPIC_API_KEY,
         )
-{%- endif %}
-{%- if cookiecutter.use_google %}
+{%- elif cookiecutter.use_google %}
         return ChatGoogleGenerativeAI(
             model=self.model_name,
             temperature=self.temperature,

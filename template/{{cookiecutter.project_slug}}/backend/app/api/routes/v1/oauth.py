@@ -16,6 +16,19 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+{%- if cookiecutter.enable_email_domain_allowlist %}
+
+
+def _is_domain_allowed(email: str) -> bool:
+    """Return True if the email's domain is in ALLOWED_EMAIL_DOMAINS (or the list is empty)."""
+    raw = getattr(settings, "ALLOWED_EMAIL_DOMAINS", "").strip()
+    if not raw:
+        return True
+    allowed = {d.strip().lower() for d in raw.split(",") if d.strip()}
+    domain = email.split("@")[-1].lower() if "@" in email else ""
+    return domain in allowed
+{%- endif %}
+
 {%- if cookiecutter.enable_oauth_google %}
 
 
@@ -39,6 +52,12 @@ async def google_callback(request: Request, user_service: UserSvc):
         if not user_info:
             params = urlencode({"error": "Failed to get user info from Google"})
             return RedirectResponse(url=f"{frontend}/login?{params}")
+
+{%- if cookiecutter.enable_email_domain_allowlist %}
+        if not _is_domain_allowed(user_info.get("email", "")):
+            params = urlencode({"error": "Sign-in not allowed for your email domain."})
+            return RedirectResponse(url=f"{frontend}/login?{params}")
+{%- endif %}
 
         user = await user_service.get_or_create_oauth_user(
             provider="google",
@@ -77,6 +96,12 @@ async def google_callback(request: Request, user_service: UserSvc):
             params = urlencode({"error": "Failed to get user info from Google"})
             return RedirectResponse(url=f"{frontend}/login?{params}")
 
+{%- if cookiecutter.enable_email_domain_allowlist %}
+        if not _is_domain_allowed(user_info.get("email", "")):
+            params = urlencode({"error": "Sign-in not allowed for your email domain."})
+            return RedirectResponse(url=f"{frontend}/login?{params}")
+{%- endif %}
+
         user = await user_service.get_or_create_oauth_user(
             provider="google",
             provider_id=user_info.get("sub"),
@@ -113,6 +138,12 @@ async def google_callback(request: Request, user_service: UserSvc):
         if not user_info:
             params = urlencode({"error": "Failed to get user info from Google"})
             return RedirectResponse(url=f"{frontend}/login?{params}")
+
+{%- if cookiecutter.enable_email_domain_allowlist %}
+        if not _is_domain_allowed(user_info.get("email", "")):
+            params = urlencode({"error": "Sign-in not allowed for your email domain."})
+            return RedirectResponse(url=f"{frontend}/login?{params}")
+{%- endif %}
 
         user = user_service.get_or_create_oauth_user(
             provider="google",

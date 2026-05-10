@@ -22,6 +22,7 @@ This document describes all variables available in `cookiecutter.json` for the f
 - [Frontend](#frontend)
 - [Email](#email)
 - [Teams & Billing](#teams--billing)
+- [Embed & White-label](#embed--white-label)
 
 ---
 
@@ -104,6 +105,8 @@ These variables are set automatically by the generator.
 | `enable_oauth` | bool | `false` | OAuth is enabled | Computed from `oauth_provider` |
 | `enable_oauth_google` | bool | `false` | Google OAuth is enabled | Computed from `oauth_provider` |
 | `enable_session_management` | bool | `false` | Enable session management for OAuth | Requires OAuth |
+| `allowed_email_domains` | string | `""` | Comma-separated list of allowed email domains for OAuth sign-in (e.g. `"example.com,corp.io"`). Empty = allow all | - |
+| `enable_email_domain_allowlist` | bool | `false` | Enable email domain restriction for OAuth sign-in | Computed from `allowed_email_domains` |
 
 ---
 
@@ -185,9 +188,14 @@ These variables are set automatically by the generator.
 | `enable_file_storage` | bool | `false` | Enable file upload/storage | - |
 | `enable_cors` | bool | `true` | Enable CORS middleware | - |
 | `enable_webhooks` | bool | `false` | Enable webhook support | - |
-| `enable_conversation_persistence` | bool | `true` | Enable conversation persistence (always enabled) | Always true |
+| `enable_conversation_persistence` | bool | `true` | Enable conversation persistence (derived from `use_ai`) | Computed from `use_ai` |
 | `include_example_crud` | bool | `false` | Include example CRUD endpoints (always disabled) | Always false |
 | `enable_i18n` | bool | `true` | Enable internationalization in frontend (always enabled) | Always true |
+| `seed_admin_email` | string | `""` | Email of a user to auto-promote to app-admin on first startup (via `FIRST_ADMIN_EMAIL` env var) | - |
+| `enable_seed_admin` | bool | `false` | Enable startup auto-promotion of `seed_admin_email` to app-admin | Computed from `seed_admin_email` |
+| `embed_allowed_origins` | string | `""` | Comma-separated origins allowed to embed the app in an iframe (e.g. `"https://parent.com"`). Sets CSP `frame-ancestors` and CORS origins | - |
+| `enable_embed_mode` | bool | `false` | Enable iframe embed mode: relaxes `frame-ancestors`, gates `/login` + `/register` pages | Computed from `embed_allowed_origins` |
+| `enable_brand_from_config` | bool | `false` | Enable runtime brand color/logo override from `NEXT_PUBLIC_BRAND_COLOR` and `NEXT_PUBLIC_BRAND_LOGO_URL` env vars (white-label) | Requires frontend |
 
 ---
 
@@ -251,7 +259,8 @@ These variables are set automatically by the generator.
 
 | Variable | Type | Default | Description | Dependencies |
 |----------|------|---------|-------------|--------------|
-| `ai_framework` | enum | `"pydantic_ai"` | AI framework. Values: `pydantic_ai`, `langchain`, `langgraph`, `crewai`, `deepagents`, `pydantic_deep` | - |
+| `ai_framework` | enum | `"pydantic_ai"` | AI framework. Values: `pydantic_ai`, `langchain`, `langgraph`, `crewai`, `deepagents`, `pydantic_deep`, `none` | - |
+| `use_ai` | bool | `true` | Any AI framework is selected (false when `ai_framework=none`) | Computed from `ai_framework` |
 | `use_pydantic_ai` | bool | `true` | PydanticAI is selected | Computed from `ai_framework` |
 | `use_langchain` | bool | `false` | LangChain is selected | Computed from `ai_framework` |
 | `use_langgraph` | bool | `false` | LangGraph (ReAct agent) is selected | Computed from `ai_framework` |
@@ -352,6 +361,7 @@ These variables are set automatically by the generator.
 | `enable_admin_features_usage` | bool | `false` | Include admin usage & credits dashboard UI (`/admin/usage`) | Requires frontend + `enable_credits_system` |
 | `enable_admin_features_audit_log` | bool | `false` | Include admin audit log UI (`/admin/audit-log`) | Requires frontend |
 | `enable_admin_features_system_health` | bool | `false` | Include admin system health / status dashboard UI (`/admin/health`) | Requires frontend |
+| `enable_storybook` | bool | `false` | Include Storybook component playground (`frontend/.storybook/`) | Requires frontend |
 
 ---
 
@@ -360,7 +370,22 @@ These variables are set automatically by the generator.
 | Variable | Type | Default | Description | Dependencies |
 |----------|------|---------|-------------|--------------|
 | `enable_teams` | bool | `false` | Enable multi-tenant teams: Organizations, OrganizationMembers, Invitations, role-based access (OWNER/ADMIN/MEMBER/VIEWER), Personal Org auto-create on signup | Requires JWT auth + SQL DB |
+| `tenancy` | enum | `"single"` | Tenancy mode. Values: `single` (one workspace), `multi_org` (per-org isolation), `platform` (platform-level multi-tenancy with cross-org admin) | Requires `enable_teams` for non-single |
+| `tenancy_single` | bool | `true` | Single-tenant mode | Computed from `tenancy` |
+| `tenancy_multi_org` | bool | `false` | Multi-org tenancy mode | Computed from `tenancy` |
+| `tenancy_platform` | bool | `false` | Platform tenancy mode | Computed from `tenancy` |
+| `enable_per_org_quotas` | bool | `false` | Enable per-organization resource quotas (API calls, storage, seats) | Requires `enable_teams` |
 | `enable_billing` | bool | `false` | Enable Stripe billing: Plans, Prices, Subscriptions, checkout flow, customer portal, webhook handler | Requires `enable_teams` |
+| `payment_provider` | enum | `"stripe"` | Payment provider. Values: `stripe`, `paddle`, `lemonsqueezy`, `polar` | Requires `enable_billing` |
+| `payment_provider_stripe` | bool | `true` | Stripe is selected (fully implemented) | Computed from `payment_provider` |
+| `payment_provider_paddle` | bool | `false` | Paddle is selected (flag only) | Computed from `payment_provider` |
+| `payment_provider_lemonsqueezy` | bool | `false` | LemonSqueezy is selected (flag only) | Computed from `payment_provider` |
+| `payment_provider_polar` | bool | `false` | Polar is selected (flag only) | Computed from `payment_provider` |
+| `billing_model` | enum | `"subscription"` | Billing model. Values: `subscription`, `usage`, `hybrid`, `one_time` | Requires `enable_billing` |
+| `billing_model_subscription` | bool | `true` | Subscription billing (fully implemented) | Computed from `billing_model` |
+| `billing_model_usage` | bool | `false` | Usage-based billing (flag only) | Computed from `billing_model` |
+| `billing_model_hybrid` | bool | `false` | Hybrid billing (flag only) | Computed from `billing_model` |
+| `billing_model_one_time` | bool | `false` | One-time payment billing (flag only) | Computed from `billing_model` |
 | `enable_credits_system` | bool | `false` | Enable credit-based usage metering: credit balance per org, usage events, subscription grants, top-up purchases | Requires `enable_billing` |
 | `enable_usage_anomaly_detection` | bool | `false` | Enable hourly usage spike detection (alerts when current-hour credits exceed 3× rolling 24h average) | Requires `enable_credits_system` |
 | `enable_usage_dashboard` | bool | `false` | Enable admin usage dashboard routes (`/admin/usage/*`) | Requires `enable_credits_system` |
@@ -389,6 +414,10 @@ These variables are set automatically by the generator.
 | `enable_email` | bool | `false` | Enable transactional email sending (welcome, invitation, password reset, billing notifications) | - |
 | `email_provider` | enum | `"log"` | Email provider. Values: `resend`, `smtp`, `log` (`log` prints emails to console — useful for development) | Requires `enable_email` |
 | `enable_newsletter_signup` | bool | `false` | Enable public `POST /newsletter/signup` endpoint that sends a welcome email to new subscribers | Requires `enable_email` |
+| `newsletter_provider` | enum | `"resend"` | Newsletter / mailing list provider. Values: `resend`, `mailchimp`, `convertkit` | Requires `enable_newsletter_signup` |
+| `newsletter_provider_resend` | bool | `true` | Resend is selected for newsletters | Computed from `newsletter_provider` |
+| `newsletter_provider_mailchimp` | bool | `false` | Mailchimp is selected (flag only) | Computed from `newsletter_provider` |
+| `newsletter_provider_convertkit` | bool | `false` | ConvertKit/Kit is selected (flag only) | Computed from `newsletter_provider` |
 
 ---
 

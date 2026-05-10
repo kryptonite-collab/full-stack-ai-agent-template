@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+{%- if cookiecutter.enable_embed_mode %}
+import { notFound } from "next/navigation";
+{%- endif %}
 
 import { RegisterForm } from "@/components/auth";
 import type { Locale } from "@/i18n";
@@ -19,5 +22,8 @@ export async function generateMetadata({
 }
 
 export default function RegisterPage() {
+{%- if cookiecutter.enable_embed_mode %}
+  notFound();
+{%- endif %}
   return <RegisterForm />;
 }
