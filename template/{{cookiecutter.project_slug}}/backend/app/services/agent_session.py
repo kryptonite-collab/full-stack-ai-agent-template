@@ -129,8 +129,8 @@ class AgentSession:
 {%- endif %}
 {%- endif %}
                 override_kb_ids=(
-                    [str(i) for i in data.get("active_knowledge_base_ids", []) or []]
-                    if isinstance(data.get("active_knowledge_base_ids"), list)
+                    [str(i) for i in (data.get("active_knowledge_base_ids") or [])]
+                    if "active_knowledge_base_ids" in data and isinstance(data.get("active_knowledge_base_ids"), list)
                     else None
                 ),
 {%- if cookiecutter.enable_teams and cookiecutter.use_database %}
@@ -525,8 +525,8 @@ class AgentSession:
 {%- endif %}
 {%- endif %}
                 override_kb_ids=(
-                    [str(i) for i in data.get("active_knowledge_base_ids", []) or []]
-                    if isinstance(data.get("active_knowledge_base_ids"), list)
+                    [str(i) for i in (data.get("active_knowledge_base_ids") or [])]
+                    if "active_knowledge_base_ids" in data and isinstance(data.get("active_knowledge_base_ids"), list)
                     else None
                 ),
 {%- if cookiecutter.enable_teams and cookiecutter.use_database %}
@@ -895,8 +895,8 @@ class AgentSession:
 {%- endif %}
 {%- endif %}
                 override_kb_ids=(
-                    [str(i) for i in data.get("active_knowledge_base_ids", []) or []]
-                    if isinstance(data.get("active_knowledge_base_ids"), list)
+                    [str(i) for i in (data.get("active_knowledge_base_ids") or [])]
+                    if "active_knowledge_base_ids" in data and isinstance(data.get("active_knowledge_base_ids"), list)
                     else None
                 ),
 {%- if cookiecutter.enable_teams and cookiecutter.use_database %}
@@ -1259,8 +1259,8 @@ class AgentSession:
 {%- endif %}
 {%- endif %}
                 override_kb_ids=(
-                    [str(i) for i in data.get("active_knowledge_base_ids", []) or []]
-                    if isinstance(data.get("active_knowledge_base_ids"), list)
+                    [str(i) for i in (data.get("active_knowledge_base_ids") or [])]
+                    if "active_knowledge_base_ids" in data and isinstance(data.get("active_knowledge_base_ids"), list)
                     else None
                 ),
 {%- if cookiecutter.enable_teams and cookiecutter.use_database %}
@@ -1687,8 +1687,8 @@ class AgentSession:
 {%- endif %}
 {%- endif %}
                 override_kb_ids=(
-                    [str(i) for i in data.get("active_knowledge_base_ids", []) or []]
-                    if isinstance(data.get("active_knowledge_base_ids"), list)
+                    [str(i) for i in (data.get("active_knowledge_base_ids") or [])]
+                    if "active_knowledge_base_ids" in data and isinstance(data.get("active_knowledge_base_ids"), list)
                     else None
                 ),
 {%- if cookiecutter.enable_teams and cookiecutter.use_database %}
@@ -2148,8 +2148,8 @@ class AgentSession:
 {%- endif %}
 {%- endif %}
                 override_kb_ids=(
-                    [str(i) for i in data.get("active_knowledge_base_ids", []) or []]
-                    if isinstance(data.get("active_knowledge_base_ids"), list)
+                    [str(i) for i in (data.get("active_knowledge_base_ids") or [])]
+                    if "active_knowledge_base_ids" in data and isinstance(data.get("active_knowledge_base_ids"), list)
                     else None
                 ),
 {%- if cookiecutter.enable_teams and cookiecutter.use_database %}
