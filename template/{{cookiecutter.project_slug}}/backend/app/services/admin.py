@@ -11,6 +11,8 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+{%- if cookiecutter.use_postgresql or cookiecutter.use_sqlite %}
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -131,3 +133,48 @@ class AdminService:
             )
         ).scalars().all()
         return list(rows), int(total)
+
+{%- elif cookiecutter.use_mongodb %}
+
+from app.db.models.conversation import Conversation, Message
+from app.db.models.user import User
+
+logger = logging.getLogger(__name__)
+
+
+class AdminService:
+    def __init__(self) -> None:
+        pass
+
+    async def workspace_stats(self) -> dict[str, Any]:
+        total_users = await User.find().count()
+
+        cutoff = datetime.now(UTC) - timedelta(hours=24)
+        active_24h: int = 0
+        try:
+            from app.db.models.session import Session as UserSession
+
+            active_24h = await UserSession.find(
+                UserSession.last_used_at >= cutoff
+            ).count()
+        except Exception:  # noqa: BLE001
+            logger.exception("admin_stats_active_users_query_failed")
+
+        total_conversations = await Conversation.find().count()
+        total_messages = await Message.find().count()
+
+        return {
+            "total_users": int(total_users),
+            "active_users_24h": int(active_24h),
+            "total_conversations": int(total_conversations),
+            "total_messages": int(total_messages),
+            "credits_charged_30d": 0,
+            "mrr_cents": 0,
+        }
+
+    async def list_stripe_events(
+        self, *, skip: int = 0, limit: int = 50
+    ) -> tuple[list[Any], int]:
+        return [], 0
+
+{%- endif %}

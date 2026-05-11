@@ -3,14 +3,18 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
+{%- if cookiecutter.enable_credits_system %}
   Activity,
+{%- endif %}
   CheckCircle,
   CreditCard,
   Database,
   List,
   MessageSquare,
   Search,
+{%- if cookiecutter.enable_credits_system %}
   Sparkles,
+{%- endif %}
   Star,
   XCircle,
 } from "lucide-react";
@@ -21,7 +25,9 @@ import { ActiveSessions } from "@/components/dashboard/active-sessions";
 import { OnboardingBanner } from "@/components/dashboard/onboarding-banner";
 import { QuickActions } from "@/components/dashboard/quick-actions";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
+{%- if cookiecutter.enable_credits_system %}
 import { SegmentedControl } from "@/components/dashboard/segmented-control";
+{%- endif %}
 import { StatCard } from "@/components/dashboard/stat-card";
 {%- if cookiecutter.enable_billing %}
 import { SubscriptionChip } from "@/components/dashboard/subscription-chip";
@@ -31,18 +37,23 @@ import { TeamSummary } from "@/components/dashboard/team-summary";
 {%- endif %}
 {%- if cookiecutter.enable_billing %}
 import { ToolUsage } from "@/components/dashboard/tool-usage";
-import { TopModels } from "@/components/dashboard/top-models";
 {%- endif %}
+{%- if cookiecutter.enable_credits_system %}
+import { TopModels } from "@/components/dashboard/top-models";
 import { UsageTimeline } from "@/components/dashboard/usage-timeline";
+{%- endif %}
 import { useAuth } from "@/hooks";
 import { apiClient } from "@/lib/api-client";
 import { ROUTES } from "@/lib/constants";
+{%- if cookiecutter.enable_credits_system %}
 import { cn } from "@/lib/utils";
+{%- endif %}
 {%- if cookiecutter.enable_rag %}
 import { listCollections, getCollectionInfo } from "@/lib/rag-api";
 {%- endif %}
 import type { HealthResponse } from "@/types";
 
+{%- if cookiecutter.enable_credits_system %}
 interface CreditBalance {
   balance: number;
   low_threshold: number;
@@ -58,6 +69,7 @@ interface UsageTimelineRead {
   buckets: UsageBucket[];
   days: number;
 }
+{%- endif %}
 
 interface ConversationsResponse {
   total?: number;
@@ -71,24 +83,30 @@ function getGreeting(): string {
   return "Good evening";
 }
 
+{%- if cookiecutter.enable_credits_system %}
 function pctDelta(current: number[], prior: number[]): number | undefined {
   const cur = current.reduce((a, b) => a + b, 0);
   const prev = prior.reduce((a, b) => a + b, 0);
   if (prev === 0) return cur > 0 ? 100 : 0;
   return ((cur - prev) / prev) * 100;
 }
+{%- endif %}
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [healthError, setHealthError] = useState(false);
+{%- if cookiecutter.enable_credits_system %}
   const [credits, setCredits] = useState<CreditBalance | null>(null);
   const [creditsLoading, setCreditsLoading] = useState(true);
+{%- endif %}
   const [conversations, setConversations] = useState<{ total: number } | null>(null);
   const [convLoading, setConvLoading] = useState(true);
   const [ragStats, setRagStats] = useState<{ collections: number; vectors: number } | null>(null);
+{%- if cookiecutter.enable_credits_system %}
   const [timeline, setTimeline] = useState<UsageBucket[] | null>(null);
   const [period, setPeriod] = useState<7 | 30 | 90>(7);
+{%- endif %}
 
   useEffect(() => {
     apiClient
@@ -99,11 +117,13 @@ export default function DashboardPage() {
       })
       .catch(() => setHealthError(true));
 
+{%- if cookiecutter.enable_credits_system %}
     apiClient
       .get<CreditBalance>("/billing/me/credits")
       .then(setCredits)
       .catch(() => setCredits(null))
       .finally(() => setCreditsLoading(false));
+{%- endif %}
 
     apiClient
       .get<ConversationsResponse>("/conversations?limit=1")
@@ -131,6 +151,7 @@ export default function DashboardPage() {
     {%- endif %}
   }, []);
 
+{%- if cookiecutter.enable_credits_system %}
   // Refetch the timeline whenever the period changes.
   // Fetch period * 2 days so we have current + prior windows for delta math.
   useEffect(() => {
@@ -165,6 +186,7 @@ export default function DashboardPage() {
       )
     : undefined;
   const deltaLabel = `vs prior ${period}d`;
+{%- endif %}
 
   return (
     <div className="space-y-6 pb-8">
@@ -207,6 +229,7 @@ export default function DashboardPage() {
         <h2 className="text-foreground/55 font-mono text-[11px] tracking-wider uppercase">
           Workspace metrics
         </h2>
+        {%- if cookiecutter.enable_credits_system %}
         <SegmentedControl
           value={String(period)}
           onChange={(v) => setPeriod(Number(v) as 7 | 30 | 90)}
@@ -216,8 +239,10 @@ export default function DashboardPage() {
             { label: "90d", value: "90" },
           ]}
         />
+        {%- endif %}
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {%- if cookiecutter.enable_credits_system %}
         <StatCard
           label="Credits balance"
           value={creditsLoading ? "—" : credits ? credits.balance.toLocaleString() : "0"}
@@ -228,12 +253,14 @@ export default function DashboardPage() {
           loading={creditsLoading}
           featured
         />
+        {%- endif %}
         <StatCard
           label="Conversations"
           value={convLoading ? "—" : (conversations?.total ?? 0).toLocaleString()}
           icon={MessageSquare}
           loading={convLoading}
         />
+        {%- if cookiecutter.enable_credits_system %}
         <StatCard
           label={`API calls (${period}d)`}
           value={timeline ? callsSpark.reduce((a, b) => a + b, 0).toLocaleString() : "—"}
@@ -243,6 +270,7 @@ export default function DashboardPage() {
           spark={callsSpark.length >= 2 ? callsSpark : [0, 0]}
           loading={!timeline}
         />
+        {%- endif %}
         <StatCard
           label="Knowledge base"
           value={ragStats ? ragStats.vectors.toLocaleString() : "—"}
@@ -281,6 +309,7 @@ export default function DashboardPage() {
             ? `${ragStats.collections} collection${ragStats.collections === 1 ? "" : "s"}`
             : "—"}
         </span>
+        {%- if cookiecutter.enable_credits_system %}
         {credits && credits.low_threshold > 0 && (
           <span
             className={cn(
@@ -299,6 +328,7 @@ export default function DashboardPage() {
             {credits.low_threshold.toLocaleString()}
           </span>
         )}
+        {%- endif %}
         {%- if cookiecutter.enable_billing %}
         <SubscriptionChip />
         {%- endif %}
@@ -311,13 +341,15 @@ export default function DashboardPage() {
         </Link>
       </div>
 
+      {%- if cookiecutter.enable_credits_system %}
       {/* Usage timeline (full width) */}
       <UsageTimeline />
+      {%- endif %}
 
       {/* Activity + behavior insights */}
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
         <RecentActivity />
-        {%- if cookiecutter.enable_billing %}
+        {%- if cookiecutter.enable_credits_system %}
         <TopModels />
         {%- endif %}
       </div>

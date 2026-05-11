@@ -24,7 +24,9 @@ import app.repositories.subscription as subscription_repo
 import app.repositories.usage_event as usage_event_repo
 {%- endif %}
 from app.services.billing.checkout_service import CheckoutService
+{%- if cookiecutter.enable_credits_system %}
 from app.services.billing.credit_service import CreditService
+{%- endif %}
 from app.services.billing.exceptions import InvalidWebhookError
 from app.services.billing.stripe_client import StripeClient
 from app.services.billing.subscription_service import SubscriptionService
@@ -33,7 +35,9 @@ from app.services.billing.webhook_handler import WebhookHandler
 from app.core.config import settings
 {%- endif %}
 from app.core.exceptions import BadRequestError, NotFoundError
+{%- if cookiecutter.enable_credits_system %}
 from app.db.models.credit_transaction import CreditTransaction
+{%- endif %}
 from app.db.models.plan import Plan
 from app.db.models.subscription import Subscription
 from app.db.models.user import User
@@ -52,7 +56,9 @@ class BillingService:
         self.db = db
         self._checkout = CheckoutService(db)
         self._subscription = SubscriptionService(db)
+{%- if cookiecutter.enable_credits_system %}
         self._credits = CreditService(db)
+{%- endif %}
 
     # -- Plans --
 
@@ -135,6 +141,8 @@ class BillingService:
     async def change_plan(self, org_id: uuid.UUID, new_price_id: uuid.UUID) -> Subscription:
         return await self._subscription.change_plan(org_id=org_id, new_price_id=new_price_id)
 
+{%- if cookiecutter.enable_credits_system %}
+
     # -- Credits --
 
     async def get_credit_balance(self, org_id: uuid.UUID) -> int:
@@ -144,8 +152,6 @@ class BillingService:
         self, org_id: uuid.UUID, *, skip: int, limit: int
     ) -> tuple[list[CreditTransaction], int]:
         return await self._credits.get_history(org_id, skip=skip, limit=limit)
-
-{%- if cookiecutter.enable_credits_system %}
 
     # -- Usage --
 
@@ -234,13 +240,17 @@ import app.repositories.plan as plan_repo
 import app.repositories.usage_event as usage_event_repo
 {%- endif %}
 from app.services.billing.checkout_service import CheckoutService
+{%- if cookiecutter.enable_credits_system %}
 from app.services.billing.credit_service import CreditService
+{%- endif %}
 from app.services.billing.exceptions import InvalidWebhookError
 from app.services.billing.stripe_client import StripeClient
 from app.services.billing.subscription_service import SubscriptionService
 from app.services.billing.webhook_handler import WebhookHandler
 from app.core.exceptions import BadRequestError, NotFoundError
+{%- if cookiecutter.enable_credits_system %}
 from app.db.models.credit_transaction import CreditTransaction
+{%- endif %}
 from app.db.models.plan import Plan
 from app.db.models.subscription import Subscription
 from app.repositories import organization_repo
@@ -253,7 +263,9 @@ class BillingService:
         self.db = db
         self._checkout = CheckoutService(db)
         self._subscription = SubscriptionService(db)
+{%- if cookiecutter.enable_credits_system %}
         self._credits = CreditService(db)
+{%- endif %}
 
     # -- Plans --
 
@@ -328,6 +340,8 @@ class BillingService:
     def change_plan(self, org_id: str, new_price_id: str) -> Subscription:
         return self._subscription.change_plan(org_id=org_id, new_price_id=new_price_id)
 
+{%- if cookiecutter.enable_credits_system %}
+
     # -- Credits --
 
     def get_credit_balance(self, org_id: str) -> int:
@@ -337,8 +351,6 @@ class BillingService:
         self, org_id: str, *, skip: int, limit: int
     ) -> tuple[list[CreditTransaction], int]:
         return self._credits.get_history(org_id, skip=skip, limit=limit)
-
-{%- if cookiecutter.enable_credits_system %}
 
     # -- Usage --
 

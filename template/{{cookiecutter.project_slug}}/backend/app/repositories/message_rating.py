@@ -195,10 +195,10 @@ async def get_rating_summary(
     # Total counts
     counts_query = select(
         func.count().label("total"),
-        func.sum(func.case((MessageRating.rating == 1, 1), else_=0)).label("likes"),
-        func.sum(func.case((MessageRating.rating == -1, 1), else_=0)).label("dislikes"),
+        func.sum(case((MessageRating.rating == 1, 1), else_=0)).label("likes"),
+        func.sum(case((MessageRating.rating == -1, 1), else_=0)).label("dislikes"),
         func.avg(MessageRating.rating).label("avg_rating"),
-        func.sum(func.case((and_(MessageRating.comment.isnot(None), MessageRating.comment != ""), 1), else_=0)).label("with_comments"),
+        func.sum(case((and_(MessageRating.comment.isnot(None), MessageRating.comment != ""), 1), else_=0)).label("with_comments"),
     ).where(MessageRating.created_at >= cutoff_date)
 
     result = await db.execute(counts_query)
@@ -207,8 +207,8 @@ async def get_rating_summary(
     # Daily breakdown
     daily_query = select(
         func.date(MessageRating.created_at).label("date"),
-        func.sum(func.case((MessageRating.rating == 1, 1), else_=0)).label("likes"),
-        func.sum(func.case((MessageRating.rating == -1, 1), else_=0)).label("dislikes"),
+        func.sum(case((MessageRating.rating == 1, 1), else_=0)).label("likes"),
+        func.sum(case((MessageRating.rating == -1, 1), else_=0)).label("dislikes"),
     ).where(
         MessageRating.created_at >= cutoff_date
     ).group_by(

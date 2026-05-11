@@ -47,7 +47,7 @@ from app.db.session import get_db_context{% if cookiecutter.use_sqlite %}, get_d
 from contextlib import contextmanager{% endif %}
 from app.services.file_storage import get_file_storage
 {%- endif %}
-{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
+{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and cookiecutter.enable_credits_system and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
 from app.services.usage import UsageService
 {%- endif %}
 
@@ -162,7 +162,7 @@ class AgentSession:
                     collected_tool_calls,
                 )
 
-{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
+{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and cookiecutter.enable_credits_system and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
             # Record usage + debit credits (best-effort).
             if agent_run.result is not None and organization_id:
                 await self._record_usage(
@@ -196,7 +196,7 @@ class AgentSession:
             logger.exception(f"Error processing agent request: {e}")
             await send_event(self.websocket, "error", {"message": str(e)})
 
-{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
+{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and cookiecutter.enable_credits_system and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
     async def _record_usage(
         self,
         *,
@@ -440,6 +440,8 @@ from app.db.models.user import User
 {%- endif %}
 {%- if cookiecutter.enable_billing and cookiecutter.enable_teams and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
 from app.db.session import get_db_context
+{%- endif %}
+{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and cookiecutter.enable_credits_system and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
 from app.services.usage import UsageService
 {%- endif %}
 
@@ -563,7 +565,7 @@ class AgentSession:
                     collected_tool_calls,
                 )
 
-{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
+{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and cookiecutter.enable_credits_system and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
             # Record usage + debit credits (best-effort).
             if final_output and organization_id and getattr(self, "_last_usage_metadata", None):
                 await self._record_usage(
@@ -597,7 +599,7 @@ class AgentSession:
             logger.exception(f"Error processing agent request: {e}")
             await send_event(self.websocket, "error", {"message": str(e)})
 
-{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
+{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and cookiecutter.enable_credits_system and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
     async def _record_usage(
         self,
         *,
@@ -810,6 +812,8 @@ from app.db.models.user import User
 {%- endif %}
 {%- if cookiecutter.enable_billing and cookiecutter.enable_teams and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
 from app.db.session import get_db_context
+{%- endif %}
+{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and cookiecutter.enable_credits_system and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
 from app.services.usage import UsageService
 {%- endif %}
 
@@ -930,7 +934,7 @@ class AgentSession:
                     collected_tool_calls,
                 )
 
-{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
+{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and cookiecutter.enable_credits_system and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
             # Record usage + debit credits (best-effort).
             if final_output and organization_id and getattr(self, "_last_usage_metadata", None):
                 await self._record_usage(
@@ -964,7 +968,7 @@ class AgentSession:
             logger.exception(f"Error processing agent request: {e}")
             await send_event(self.websocket, "error", {"message": str(e)})
 
-{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
+{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and cookiecutter.enable_credits_system and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
     async def _record_usage(
         self,
         *,
@@ -1172,6 +1176,8 @@ from app.db.models.user import User
 {%- endif %}
 {%- if cookiecutter.enable_billing and cookiecutter.enable_teams and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
 from app.db.session import get_db_context
+{%- endif %}
+{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and cookiecutter.enable_credits_system and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
 from app.services.usage import UsageService
 {%- endif %}
 
@@ -1276,7 +1282,7 @@ class AgentSession:
                     {"role": "assistant", "content": final_output}
                 )
 
-{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
+{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and cookiecutter.enable_credits_system and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
             # Record usage + debit credits (best-effort).
             if final_output and organization_id:
                 await self._record_usage(
@@ -1418,7 +1424,7 @@ class AgentSession:
 
         return final_output
 
-{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
+{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and cookiecutter.enable_credits_system and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
     async def _record_usage(
         self,
         *,
@@ -1506,7 +1512,7 @@ from app.api.deps import get_conversation_service
 from app.db.session import get_db_context{% if cookiecutter.use_sqlite %}, get_db_session
 from contextlib import contextmanager{% endif %}
 {%- endif %}
-{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
+{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and cookiecutter.enable_credits_system and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
 from app.services.usage import UsageService
 {%- endif %}
 
@@ -1740,7 +1746,7 @@ class AgentSession:
                     collected_tool_calls,
                 )
 
-{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
+{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and cookiecutter.enable_credits_system and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
             # Record usage + debit credits (best-effort).
             if final_output and organization_id and getattr(self, "_last_usage_metadata", None):
                 await self._record_usage(
@@ -1773,7 +1779,7 @@ class AgentSession:
             logger.exception(f"Error processing agent request: {e}")
             await send_event(self.websocket, "error", {"message": str(e)})
 
-{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
+{%- if cookiecutter.enable_billing and cookiecutter.enable_teams and cookiecutter.enable_credits_system and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
     async def _record_usage(
         self,
         *,

@@ -19,9 +19,7 @@ import {
   UserCircle,
   Building2,
   CreditCard,
-{%- if cookiecutter.enable_admin_panel %}
   ShieldCheck,
-{%- endif %}
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui";
 import { useSidebarStore } from "@/stores";
@@ -42,9 +40,7 @@ const adminNavItems = [
   { name: "Billing", href: ROUTES.BILLING, icon: CreditCard, adminOnly: false },
 {%- endif %}
   { name: "Profile", href: ROUTES.PROFILE, icon: UserCircle, adminOnly: false },
-{%- if cookiecutter.enable_admin_panel %}
   { name: "Admin", href: ROUTES.ADMIN, icon: ShieldCheck, adminOnly: true },
-{%- endif %}
 ];
 
 export function Header() {
