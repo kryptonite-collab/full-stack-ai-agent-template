@@ -102,9 +102,9 @@ class UserService:
     async def list_paginated(self) -> Any:
         """Return paginated user list (fastapi-pagination Page)."""
 {%- if cookiecutter.use_mongodb %}
-        from fastapi_pagination.ext.beanie import paginate
+        from fastapi_pagination.ext.beanie import apaginate
 
-        return await paginate(User)
+        return await apaginate(User)
 {%- else %}
         from fastapi_pagination.ext.sqlalchemy import paginate
 
@@ -193,8 +193,13 @@ class UserService:
             is_app_admin=is_first_user,
         )
 {%- if cookiecutter.enable_teams %}
+{%- if cookiecutter.use_mongodb %}
+        org_service = OrganizationService()
+        await org_service.create_personal_org(str(user.id), user_in.email)
+{%- else %}
         org_service = OrganizationService(self.db)
         await org_service.create_personal_org(user.id, user_in.email)
+{%- endif %}
 {%- endif %}
 {%- if cookiecutter.enable_email %}
         try:
@@ -256,8 +261,13 @@ class UserService:
             is_app_admin=is_first_user,
         )
 {%- if cookiecutter.enable_teams %}
+{%- if cookiecutter.use_mongodb %}
+        org_service = OrganizationService()
+        await org_service.create_personal_org(str(user.id), user.email)
+{%- else %}
         org_service = OrganizationService(self.db)
         await org_service.create_personal_org(user.id, user.email)
+{%- endif %}
 {%- endif %}
         return user
 
@@ -298,8 +308,13 @@ class UserService:
             oauth_id=provider_id,
         )
 {%- if cookiecutter.enable_teams %}
+{%- if cookiecutter.use_mongodb %}
+        org_service = OrganizationService()
+        await org_service.create_personal_org(str(user.id), user.email)
+{%- else %}
         org_service = OrganizationService(self.db)
         await org_service.create_personal_org(user.id, user.email)
+{%- endif %}
 {%- endif %}
 {%- if cookiecutter.enable_email %}
         try:

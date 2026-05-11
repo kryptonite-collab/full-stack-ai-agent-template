@@ -1004,7 +1004,7 @@ class MessageRatingService:
 
             result.append(
                 MessageRatingWithDetails(
-                    id=item.id,
+                    id=str(item.id),
                     message_id=item.message_id,
                     user_id=item.user_id,
                     rating=RatingValue(item.rating),
@@ -1067,7 +1067,7 @@ class MessageRatingService:
 {%- endif %}
                 result.append(
                     MessageRatingWithDetails(
-                        id=item.id,
+                        id=str(item.id),
                         message_id=item.message_id,
                         user_id=item.user_id,
                         rating=RatingValue(item.rating),
