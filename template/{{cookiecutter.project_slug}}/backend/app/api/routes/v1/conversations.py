@@ -194,10 +194,13 @@ async def get_conversation(
 
     Raises 404 if the conversation does not exist.
     """
+{%- if cookiecutter.use_jwt %}
+    uid = None if current_user.role == "admin" else current_user.id
+{%- endif %}
     return await conversation_service.get_conversation(
         conversation_id, include_messages=True,
 {%- if cookiecutter.use_jwt %}
-        user_id=current_user.id,
+        user_id=uid,
 {%- endif %}
     )
 
@@ -302,13 +305,16 @@ async def list_messages(
 
     Returns messages ordered by creation time (oldest first).
     """
+{%- if cookiecutter.use_jwt %}
+    uid = None if current_user.role == "admin" else current_user.id
+{%- endif %}
     items, total = await conversation_service.list_messages(
         conversation_id,
         skip=skip,
         limit=limit,
         include_tool_calls=True,
 {%- if cookiecutter.use_jwt %}
-        user_id=current_user.id,
+        user_id=uid,
 {%- endif %}
     )
     return MessageList(items=items, total=total)  # type: ignore[arg-type]

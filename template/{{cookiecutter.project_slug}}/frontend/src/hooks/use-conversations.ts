@@ -53,15 +53,16 @@ export function useConversations() {
       hasMoreRef.current = response.items.length >= PAGE_SIZE;
       // URL ?id= param always takes priority
       const urlId = new URLSearchParams(window.location.search).get("id");
-      if (urlId && response.items.some((c) => c.id === urlId)) {
-        if (useConversationStore.getState().currentConversationId !== urlId) {
-          setCurrentConversationId(urlId);
-          clearMessages();
-          setCurrentMessages([]);
-          try {
-            const msgs = await apiClient.get<MessagesResponse>(`/conversations/${urlId}/messages`);
-            setCurrentMessages(msgs.items);
-          } catch {}
+      if (urlId && useConversationStore.getState().currentConversationId !== urlId) {
+        setCurrentConversationId(urlId);
+        clearMessages();
+        setCurrentMessages([]);
+        try {
+          const msgs = await apiClient.get<MessagesResponse>(`/conversations/${urlId}/messages`);
+          setCurrentMessages(msgs.items);
+        } catch {
+          // Not accessible (deleted, no permission) — clear the stale id
+          setCurrentConversationId(null);
         }
       }
     } catch (err) {

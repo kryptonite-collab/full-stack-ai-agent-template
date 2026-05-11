@@ -2,13 +2,25 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Download, ExternalLink, ThumbsUp, ThumbsDown } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import {
+  Download,
+  ExternalLink,
+  MessageSquare,
+  ThumbsDown,
+  ThumbsUp,
+  TrendingUp,
+} from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -16,20 +28,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { apiClient } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 import type { MessageRatingListResponse, RatingSummary } from "@/types";
 
 const PAGE_SIZE = 50;
-
 type RatingFilter = "all" | "positive" | "negative";
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
 export default function AdminRatingsPage() {
   const [summary, setSummary] = useState<RatingSummary | null>(null);
@@ -51,7 +63,6 @@ export default function AdminRatingsPage() {
       if (filter !== "all") {
         ratingsParams.set("rating_filter", filter === "positive" ? "1" : "-1");
       }
-
       const [summaryData, ratingsData] = await Promise.all([
         apiClient.get<RatingSummary>("/admin/ratings/summary?days=30"),
         apiClient.get<MessageRatingListResponse>(`/admin/ratings?${ratingsParams}`),
@@ -59,7 +70,7 @@ export default function AdminRatingsPage() {
       setSummary(summaryData);
       setRatings(ratingsData);
     } catch {
-      /* ignore — errors shown via empty state */
+      /* ignore — empty state handles errors */
     } finally {
       setLoading(false);
     }
@@ -77,19 +88,29 @@ export default function AdminRatingsPage() {
   };
 
   const totalPages = ratings ? Math.ceil(ratings.total / PAGE_SIZE) : 0;
+  const approvalRate =
+    summary && summary.total_ratings > 0
+      ? Math.round((summary.like_count / summary.total_ratings) * 100)
+      : null;
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto w-full max-w-6xl space-y-6 pb-10">
+      {/* Header */}
+      <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Response Ratings</h1>
-          <p className="text-muted-foreground text-sm">
-            Message quality feedback from users over the last 30 days.
+          <p className="text-foreground/55 font-mono text-[11px] tracking-wider uppercase">
+            Response Ratings
+          </p>
+          <h1 className="font-display text-foreground mt-1 text-3xl font-bold tracking-tight sm:text-4xl">
+            Message quality
+          </h1>
+          <p className="text-foreground/65 mt-1 text-sm">
+            User feedback on AI responses — last 30 days.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Select value={exportFormat} onValueChange={(v) => setExportFormat(v as "json" | "csv")}>
-            <SelectTrigger className="w-24">
+            <SelectTrigger className="rounded-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -97,220 +118,309 @@ export default function AdminRatingsPage() {
               <SelectItem value="json">JSON</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={handleExport}>
+          <Button variant="outline" onClick={handleExport} className="rounded-full">
             <Download className="mr-2 h-4 w-4" />
             Export
           </Button>
         </div>
-      </div>
+      </header>
 
-      {/* Summary cards */}
-      {loading && !summary ? (
-        <div className="grid gap-4 sm:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 w-full" />
-          ))}
-        </div>
-      ) : summary ? (
-        <div className="grid gap-4 sm:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Total Ratings</CardDescription>
-              <CardTitle className="text-3xl tabular-nums">{summary.total_ratings}</CardTitle>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Likes</CardDescription>
-              <CardTitle className="flex items-center gap-2 text-3xl text-green-600 tabular-nums">
-                <ThumbsUp className="h-5 w-5" />
-                {summary.like_count}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Dislikes</CardDescription>
-              <CardTitle className="text-destructive flex items-center gap-2 text-3xl tabular-nums">
-                <ThumbsDown className="h-5 w-5" />
-                {summary.dislike_count}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Average Rating</CardDescription>
-              <CardTitle className="text-3xl tabular-nums">
-                {summary.average_rating.toFixed(2)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-        </div>
-      ) : null}
+      {/* Stat tiles */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatTile label="Total ratings" value={loading ? null : String(summary?.total_ratings ?? 0)} />
+        <StatTile
+          label="Likes"
+          value={loading ? null : String(summary?.like_count ?? 0)}
+          accent="green"
+          icon={<ThumbsUp className="h-4 w-4" />}
+        />
+        <StatTile
+          label="Dislikes"
+          value={loading ? null : String(summary?.dislike_count ?? 0)}
+          accent="red"
+          icon={<ThumbsDown className="h-4 w-4" />}
+        />
+        <StatTile
+          label="Approval rate"
+          value={loading ? null : approvalRate !== null ? `${approvalRate}%` : "—"}
+          icon={<TrendingUp className="h-4 w-4" />}
+        />
+      </div>
 
       {/* Chart */}
-      {summary && summary.ratings_by_day.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Ratings Over Time</CardTitle>
-            <CardDescription>Daily like/dislike counts.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={260}>
+      {!loading && summary && summary.ratings_by_day.length > 0 && (
+        <section className="border-foreground/10 bg-card rounded-2xl border p-6">
+          <p className="text-foreground/55 font-mono text-[11px] tracking-wider uppercase">
+            Over time
+          </p>
+          <h2 className="font-display text-foreground mt-1 text-base font-semibold tracking-tight">
+            Ratings per day
+          </h2>
+          <div className="mt-5 h-56">
+            <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={summary.ratings_by_day}
-                margin={{ top: 4, right: 4, bottom: 4, left: 0 }}
+                margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
+                barGap={2}
               >
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} className="fill-muted-foreground" />
-                <YAxis tick={{ fontSize: 11 }} className="fill-muted-foreground" />
-                <Tooltip
-                  contentStyle={{
-                    background: "hsl(var(--popover))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "6px",
-                  }}
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="oklch(from var(--color-foreground) l c h / 0.07)"
+                  vertical={false}
                 />
-                <Bar dataKey="likes" fill="#22c55e" name="Likes" radius={[4, 4, 0, 0]} />
-                <Bar
-                  dataKey="dislikes"
-                  fill="hsl(var(--destructive))"
-                  name="Dislikes"
-                  radius={[4, 4, 0, 0]}
+                <XAxis
+                  dataKey="date"
+                  stroke="oklch(from var(--color-foreground) l c h / 0.3)"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontFamily: "var(--font-mono)", fill: "oklch(from var(--color-foreground) l c h / 0.45)" }}
                 />
+                <YAxis
+                  stroke="oklch(from var(--color-foreground) l c h / 0.3)"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontFamily: "var(--font-mono)", fill: "oklch(from var(--color-foreground) l c h / 0.45)" }}
+                  width={28}
+                  allowDecimals={false}
+                />
+                <Tooltip content={<RatingsTooltip />} cursor={{ fill: "oklch(from var(--color-foreground) l c h / 0.04)" }} />
+                <Bar dataKey="likes" name="Likes" fill="#22c55e" radius={[3, 3, 0, 0]} maxBarSize={24} />
+                <Bar dataKey="dislikes" name="Dislikes" fill="#ef4444" radius={[3, 3, 0, 0]} maxBarSize={24} />
               </BarChart>
             </ResponsiveContainer>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="mt-3 flex items-center gap-5">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
+              <span className="text-foreground/55 font-mono text-[10px] tracking-wider uppercase">Likes</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+              <span className="text-foreground/55 font-mono text-[10px] tracking-wider uppercase">Dislikes</span>
+            </span>
+          </div>
+        </section>
       )}
 
-      {/* Filters */}
-      <div className="flex items-center gap-4">
-        <Select
-          value={filter}
-          onValueChange={(v) => {
-            setFilter(v as RatingFilter);
-            setPage(0);
-          }}
-        >
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Ratings</SelectItem>
-            <SelectItem value="positive">Likes Only</SelectItem>
-            <SelectItem value="negative">Dislikes Only</SelectItem>
-          </SelectContent>
-        </Select>
-        <label className="flex items-center gap-2 text-sm">
-          <Checkbox
-            checked={commentsOnly}
-            onCheckedChange={(v) => {
-              setCommentsOnly(!!v);
-              setPage(0);
-            }}
-          />
-          With comments only
-        </label>
-      </div>
+      {/* Filters + table */}
+      <section className="border-foreground/10 bg-card rounded-2xl border">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-foreground/10 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <Select
+              value={filter}
+              onValueChange={(v) => {
+                setFilter(v as RatingFilter);
+                setPage(0);
+              }}
+            >
+              <SelectTrigger className="w-36 rounded-full text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All ratings</SelectItem>
+                <SelectItem value="positive">Likes only</SelectItem>
+                <SelectItem value="negative">Dislikes only</SelectItem>
+              </SelectContent>
+            </Select>
+            <label className="flex cursor-pointer items-center gap-2 text-xs">
+              <Checkbox
+                checked={commentsOnly}
+                onCheckedChange={(v) => {
+                  setCommentsOnly(!!v);
+                  setPage(0);
+                }}
+              />
+              <span className="text-foreground/65">With comments only</span>
+            </label>
+          </div>
+          {ratings && !loading && (
+            <span className="text-foreground/45 font-mono text-[11px] tracking-wider uppercase">
+              {ratings.total.toLocaleString()} result{ratings.total === 1 ? "" : "s"}
+            </span>
+          )}
+        </div>
 
-      {/* Ratings table */}
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Rating</TableHead>
-              <TableHead>Comment</TableHead>
-              <TableHead>Message</TableHead>
-              <TableHead>User</TableHead>
-              <TableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading
-              ? Array.from({ length: 8 }).map((_, i) => (
-                  <TableRow key={i}>
-                    <TableCell colSpan={6}>
-                      <Skeleton className="h-8 w-full" />
-                    </TableCell>
-                  </TableRow>
-                ))
-              : ratings?.items.map((rating) => (
-                  <TableRow key={rating.id}>
-                    <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
-                      {new Date(rating.created_at).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      {rating.rating === 1 ? (
-                        <Badge variant="default" className="bg-green-600">
-                          <ThumbsUp className="mr-1 h-3 w-3" />
-                          Like
-                        </Badge>
-                      ) : (
-                        <Badge variant="destructive">
-                          <ThumbsDown className="mr-1 h-3 w-3" />
-                          Dislike
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="max-w-xs truncate text-sm">
-                      {rating.comment || <span className="text-muted-foreground">—</span>}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground max-w-xs truncate text-sm">
-                      {rating.message_content || "—"}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {rating.user_name || rating.user_email || "—"}
-                    </TableCell>
-                    <TableCell>
-                      {rating.conversation_id && (
-                        <Button variant="ghost" size="sm" asChild>
-                          <Link href={`/chat?id=${rating.conversation_id}`}>
-                            <ExternalLink className="mr-1 h-3 w-3" />
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-foreground/[0.07]">
+                {["Date", "Rating", "Comment", "Message", "User", ""].map((h, i) => (
+                  <th
+                    key={i}
+                    className="text-foreground/40 px-5 py-3 text-left font-mono text-[10px] tracking-wider uppercase"
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-foreground/[0.05]">
+              {loading
+                ? Array.from({ length: 8 }).map((_, i) => (
+                    <tr key={i}>
+                      <td colSpan={6} className="px-5 py-3">
+                        <div className="bg-foreground/[0.05] h-5 w-full animate-pulse rounded" />
+                      </td>
+                    </tr>
+                  ))
+                : ratings?.items.length === 0
+                  ? (
+                    <tr>
+                      <td colSpan={6} className="py-16 text-center">
+                        <MessageSquare className="text-foreground/20 mx-auto mb-3 h-8 w-8" />
+                        <p className="text-foreground/45 text-sm">No ratings found.</p>
+                        <p className="text-foreground/35 mt-1 text-xs">Try adjusting the filters above.</p>
+                      </td>
+                    </tr>
+                  )
+                  : ratings?.items.map((rating) => (
+                    <tr key={rating.id} className="hover:bg-foreground/[0.02] transition-colors">
+                      <td className="text-foreground/50 whitespace-nowrap px-5 py-3 font-mono text-xs tabular-nums">
+                        {formatDate(rating.created_at)}
+                      </td>
+                      <td className="px-5 py-3">
+                        {rating.rating === 1 ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2.5 py-0.5 font-mono text-[10px] font-semibold tracking-wider uppercase text-green-600 dark:text-green-400">
+                            <ThumbsUp className="h-3 w-3" />
+                            Like
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2.5 py-0.5 font-mono text-[10px] font-semibold tracking-wider uppercase text-red-600 dark:text-red-400">
+                            <ThumbsDown className="h-3 w-3" />
+                            Dislike
+                          </span>
+                        )}
+                      </td>
+                      <td className="text-foreground/65 max-w-[180px] truncate px-5 py-3 text-xs">
+                        {rating.comment || <span className="text-foreground/25">—</span>}
+                      </td>
+                      <td className="text-foreground/50 max-w-[260px] truncate px-5 py-3 text-xs">
+                        {rating.message_content || "—"}
+                      </td>
+                      <td className="text-foreground/65 whitespace-nowrap px-5 py-3 text-xs">
+                        {rating.user_name || rating.user_email || "—"}
+                      </td>
+                      <td className="px-5 py-3">
+                        {rating.conversation_id && (
+                          <Link
+                            href={`/chat?id=${rating.conversation_id}`}
+                            className="text-foreground/40 hover:text-foreground inline-flex items-center gap-1 font-mono text-[11px] tracking-wider uppercase transition-colors"
+                          >
+                            <ExternalLink className="h-3 w-3" />
                             View
                           </Link>
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-            {!loading && ratings?.items.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={6} className="text-muted-foreground py-8 text-center">
-                  No ratings found.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <span className="text-muted-foreground text-sm">
-            Page {page + 1} of {totalPages} &middot; {ratings?.total} total
-          </span>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page === 0}
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages - 1}
-              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-            >
-              Next
-            </Button>
-          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+            </tbody>
+          </table>
         </div>
-      )}
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-foreground/10 px-5 py-3">
+            <span className="text-foreground/40 font-mono text-[11px] tracking-wider uppercase">
+              Page {page + 1} of {totalPages} · {ratings?.total.toLocaleString()} total
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page === 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                className="rounded-full"
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= totalPages - 1}
+                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                className="rounded-full"
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function StatTile({
+  label,
+  value,
+  icon,
+  accent,
+}: {
+  label: string;
+  value: string | null;
+  icon?: React.ReactNode;
+  accent?: "green" | "red";
+}) {
+  return (
+    <div className="border-foreground/10 bg-card rounded-2xl border p-5">
+      <p className="text-foreground/55 font-mono text-[11px] tracking-wider uppercase">{label}</p>
+      <div className="mt-3 flex items-baseline gap-2">
+        {value === null ? (
+          <div className="bg-foreground/[0.06] h-8 w-20 animate-pulse rounded-lg" />
+        ) : (
+          <>
+            <span
+              className={cn(
+                "font-display text-3xl font-bold tabular-nums tracking-tight",
+                accent === "green" && "text-green-600 dark:text-green-400",
+                accent === "red" && "text-red-600 dark:text-red-400",
+                !accent && "text-foreground",
+              )}
+            >
+              {value}
+            </span>
+            {icon && (
+              <span
+                className={cn(
+                  "mb-0.5",
+                  accent === "green" && "text-green-500",
+                  accent === "red" && "text-red-500",
+                  !accent && "text-foreground/30",
+                )}
+              >
+                {icon}
+              </span>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RatingsTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: Array<{ name: string; value: number; color: string }>;
+  label?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="border-border bg-card rounded-xl border px-3 py-2.5 text-xs shadow-lg">
+      <p className="text-foreground/50 mb-2 font-mono text-[10px] tracking-wider uppercase">
+        {label}
+      </p>
+      {payload.map((p) => (
+        <div key={p.name} className="flex items-center gap-2">
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: p.color }} />
+          <span className="text-foreground/65">{p.name}</span>
+          <span className="text-foreground ml-3 font-semibold tabular-nums">{p.value}</span>
+        </div>
+      ))}
     </div>
   );
 }
