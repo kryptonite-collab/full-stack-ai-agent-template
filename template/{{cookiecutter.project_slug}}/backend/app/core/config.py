@@ -345,10 +345,8 @@ class Settings(BaseSettings):
     AI_MODEL: str = "anthropic/claude-sonnet-4-6"
 {%- endif %}
     AI_TEMPERATURE: float = 0.7
-{%- if cookiecutter.use_pydantic_ai %}
     AI_THINKING_ENABLED: bool = False
     AI_THINKING_EFFORT: str = "medium"  # "low", "medium", "high"
-{%- endif %}
 {%- if cookiecutter.use_all_providers %}
     AI_AVAILABLE_MODELS: list[str] = [
         # OpenAI

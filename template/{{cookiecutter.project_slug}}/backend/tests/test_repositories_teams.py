@@ -336,7 +336,7 @@ class TestInvitationRepository:
         mock_invite = MagicMock()
         mock_invite.status = "pending"
 
-        result = await invitation_repo.accept(
+        await invitation_repo.accept(
             mock_db, mock_invite, accepted_by_user_id=uuid.uuid4()
         )
 
@@ -351,7 +351,7 @@ class TestInvitationRepository:
         mock_invite = MagicMock()
         mock_invite.status = "pending"
 
-        result = await invitation_repo.revoke(mock_db, mock_invite)
+        await invitation_repo.revoke(mock_db, mock_invite)
 
         assert mock_invite.status == "revoked"
         mock_db.flush.assert_called_once()

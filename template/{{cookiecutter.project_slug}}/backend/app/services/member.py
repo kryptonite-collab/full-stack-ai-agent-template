@@ -238,7 +238,6 @@ class MemberService:
             raise NotFoundError(message="Member not found", details={"user_id": target_user_id})
 
         if target.role == OrgRole.OWNER.value:
-            owners = member_repo.count_billable_for_org(self.db, organization_id)
             if member_repo.count_for_org(self.db, organization_id) <= 1:
                 raise BadRequestError(message="Cannot remove the last Owner. Transfer ownership first.")
             if requester.role != OrgRole.OWNER.value:
@@ -254,9 +253,8 @@ class MemberService:
         if not membership:
             raise NotFoundError(message="Organization not found", details={"org_id": organization_id})
 
-        if membership.role == OrgRole.OWNER.value:
-            if member_repo.count_for_org(self.db, organization_id) > 1:
-                raise BadRequestError(message="Transfer ownership before leaving the organization")
+        if membership.role == OrgRole.OWNER.value and member_repo.count_for_org(self.db, organization_id) > 1:
+            raise BadRequestError(message="Transfer ownership before leaving the organization")
 
         member_repo.delete(self.db, membership)
 
