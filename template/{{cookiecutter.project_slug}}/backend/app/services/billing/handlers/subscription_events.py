@@ -91,20 +91,28 @@ async def _grant_subscription_credits_if_needed(db: AsyncSession, sub: Subscript
 
 
 async def handle_created(db: AsyncSession, event: stripe.Event) -> None:
-    sub = await _sync_from_stripe(db, event.data.object)
 {%- if cookiecutter.enable_credits_system %}
+    sub = await _sync_from_stripe(db, event.data.object)
     if sub.status in (SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING):
         await _grant_subscription_credits_if_needed(db, sub)
+{%- else %}
+    await _sync_from_stripe(db, event.data.object)
 {%- endif %}
 
 
 async def handle_updated(db: AsyncSession, event: stripe.Event) -> None:
     stripe_sub = event.data.object
+{%- if cookiecutter.enable_credits_system %}
     sub = await _sync_from_stripe(db, stripe_sub)
+{%- else %}
+    await _sync_from_stripe(db, stripe_sub)
+{%- endif %}
     prev = event.data.previous_attributes
     if prev is None:
         return
+{%- if cookiecutter.enable_credits_system or cookiecutter.enable_email %}
     prev_status = prev.get("status") if hasattr(prev, "get") else None
+{%- endif %}
 {%- if cookiecutter.enable_credits_system %}
     # New billing period started → grant fresh credits.
     if prev.get("current_period_end") and sub.status == SubscriptionStatus.ACTIVE:
