@@ -88,7 +88,6 @@ class TestConversationTenantIsolation:
         from app.services.conversation import ConversationService
 
         org_a = uuid.uuid4()
-        org_b = uuid.uuid4()
         user_a = uuid.uuid4()
 
         # Simulate repo correctly filtering by org — returns empty for org A

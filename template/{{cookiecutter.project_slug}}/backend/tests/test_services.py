@@ -375,6 +375,7 @@ class TestUserServiceMongoDB:
         """Test registering a new user."""
         with patch("app.services.user.user_repo") as mock_repo:
             mock_repo.get_by_email = AsyncMock(return_value=None)
+            mock_repo.has_any = AsyncMock(return_value=False)
             mock_repo.create = AsyncMock(return_value=mock_user)
 
             user_in = UserCreate(

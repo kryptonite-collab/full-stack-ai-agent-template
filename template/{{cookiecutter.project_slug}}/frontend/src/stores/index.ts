@@ -8,6 +8,6 @@ export { useFilePreviewStore } from "./file-preview-store";
 {%- if cookiecutter.enable_teams %}
 export { useOrgStore } from "./org-store";
 {%- endif %}
-{%- if cookiecutter.enable_teams and cookiecutter.enable_rag %}
+{%- if cookiecutter.enable_rag %}
 export { useKBSelectionStore } from "./kb-selection-store";
 {%- endif %}

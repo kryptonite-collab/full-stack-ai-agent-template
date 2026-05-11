@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { nanoid } from "nanoid";
 import { useWebSocket } from "./use-websocket";
+{%- if cookiecutter.enable_rag %}
 import { useChatStore, useAuthStore, useKBSelectionStore } from "@/stores";
+{%- else %}
+import { useChatStore, useAuthStore } from "@/stores";
+{%- endif %}
 import type {
   ChatMessageFile,
   Decision,
@@ -459,8 +463,10 @@ export function useChat(options: UseChatOptions = {}) {
       if (modelRef.current) payload.model = modelRef.current;
       if (temperatureRef.current !== null) payload.temperature = temperatureRef.current;
       if (thinkingEffortRef.current !== null) payload.thinking_effort = thinkingEffortRef.current;
+{%- if cookiecutter.enable_rag %}
       const activeKBIds = useKBSelectionStore.getState().activeKBIds;
       if (activeKBIds.length) payload.active_knowledge_base_ids = activeKBIds;
+{%- endif %}
       sendMessage(payload);
     },
     [addMessage, sendMessage, conversationId],

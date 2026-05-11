@@ -15,9 +15,9 @@ This module contains agents that handle AI-powered interactions.
 Tools are defined in the tools/ subdirectory.
 """
 
-from app.agents.langchain_assistant import AgentContext, AgentState, LangChainAssistant
+from app.agents.langchain_assistant import AgentContext, LangChainAssistant
 
-__all__ = ["LangChainAssistant", "AgentContext", "AgentState"]
+__all__ = ["LangChainAssistant", "AgentContext"]
 {%- elif cookiecutter.use_langgraph %}
 """AI Agents module using LangGraph.
 

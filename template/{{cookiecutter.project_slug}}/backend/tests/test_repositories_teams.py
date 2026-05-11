@@ -406,7 +406,7 @@ class TestOrganizationRepository:
         mock_db.execute.return_value = mock_result
 
         with patch("app.repositories.organization.Organization", return_value=mock_org):
-            result = org_repo.create(
+            org_repo.create(
                 mock_db,
                 name="Acme",
                 slug="acme",

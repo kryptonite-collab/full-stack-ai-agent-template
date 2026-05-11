@@ -146,9 +146,9 @@ class TestMemberService:
         with (
             patch("app.services.member.member_repo.get", new=AsyncMock(return_value=mock_membership)),
             patch("app.services.member.member_repo.count_for_org", new=AsyncMock(return_value=3)),
+            pytest.raises(BadRequestError),
         ):
-            with pytest.raises(BadRequestError):
-                await service.leave(uuid.uuid4(), requester_id=uuid.uuid4())
+            await service.leave(uuid.uuid4(), requester_id=uuid.uuid4())
 
     @pytest.mark.anyio
     async def test_transfer_ownership_only_owner_can_call(self, service):
@@ -238,9 +238,9 @@ class TestInvitationService:
             patch("app.services.invitation.member_repo.get", new=AsyncMock(return_value=mock_requester)),
             patch("app.services.invitation.user_repo.get_by_email", new=AsyncMock(return_value=None)),
             patch("app.services.invitation.invitation_repo.get_pending_for_org_email", new=AsyncMock(return_value=mock_pending)),
+            pytest.raises(AlreadyExistsError),
         ):
-            with pytest.raises(AlreadyExistsError):
-                await service.invite(uuid.uuid4(), "user@example.com", "member", requester_id=uuid.uuid4())
+            await service.invite(uuid.uuid4(), "user@example.com", "member", requester_id=uuid.uuid4())
 
     @pytest.mark.anyio
     async def test_accept_raises_on_missing_token(self, service):
@@ -327,9 +327,9 @@ class TestMemberService:
         with (
             patch("app.services.member.member_repo.get", return_value=mock_membership),
             patch("app.services.member.member_repo.count_for_org", return_value=2),
+            pytest.raises(BadRequestError),
         ):
-            with pytest.raises(BadRequestError):
-                service.leave("org-1", requester_id="user-1")
+            service.leave("org-1", requester_id="user-1")
 
     def test_transfer_ownership_only_owner_can_call(self, service):
         from app.core.exceptions import AuthorizationError
