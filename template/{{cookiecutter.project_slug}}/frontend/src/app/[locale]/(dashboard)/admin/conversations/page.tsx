@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
   ArrowDown,
-  ArrowLeft,
   ArrowUp,
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
+  ExternalLink,
   Search,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -32,9 +33,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminConversations } from "@/hooks";
-import { ToolCallCard } from "@/components/chat/tool-call-card";
 import { cn } from "@/lib/utils";
-import type { AdminConversation } from "@/types";
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 type SortDir = "asc" | "desc";
@@ -74,12 +73,9 @@ export default function AdminConversationsPage() {
     conversations,
     conversationsTotal,
     users,
-    selectedConversation,
     isLoading,
     fetchConversations,
     fetchUsers,
-    fetchConversationDetail,
-    setSelectedConversation,
   } = useAdminConversations();
 
   const [search, setSearch] = useState("");
@@ -118,10 +114,6 @@ export default function AdminConversationsPage() {
     return () => clearTimeout(timer);
   }, [search, selectedUserId, status, sort.by, sort.dir, page, pageSize, fetchConversations]);
 
-  const handleViewConversation = async (conv: AdminConversation) => {
-    await fetchConversationDetail(conv.id);
-  };
-
   const totalPages = Math.max(1, Math.ceil(conversationsTotal / pageSize));
 
   const toggleSort = (key: ConvSortKey) =>
@@ -133,67 +125,6 @@ export default function AdminConversationsPage() {
     () => users.map((u) => ({ id: u.id, email: u.email, fullName: u.full_name })),
     [users],
   );
-
-  // Read-only conversation preview
-  if (selectedConversation) {
-    return (
-      <div className="flex h-full flex-col">
-        <div className="flex items-center gap-2 border-b p-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSelectedConversation(null)}
-            aria-label="Back to conversation list"
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden />
-          </Button>
-          <div>
-            <h2 className="font-semibold">{selectedConversation.title || t("untitled")}</h2>
-            <p className="text-muted-foreground text-xs">
-              {selectedConversation.messages.length} {t("readOnly")}
-            </p>
-          </div>
-        </div>
-        <div className="flex-1 space-y-4 overflow-y-auto p-4">
-          {selectedConversation.messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex flex-col gap-2 ${msg.role === "user" ? "items-end" : "items-start"}`}
-            >
-              {msg.content && (
-                <div
-                  className={`max-w-[80%] rounded-lg px-4 py-2 ${
-                    msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
-                  }`}
-                >
-                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                  <p className="mt-1 text-xs opacity-60">
-                    {new Date(msg.created_at).toLocaleString()}
-                  </p>
-                </div>
-              )}
-              {msg.tool_calls && msg.tool_calls.length > 0 && (
-                <div className="w-full max-w-[80%] space-y-2">
-                  {msg.tool_calls.map((tc) => (
-                    <ToolCallCard
-                      key={tc.id}
-                      toolCall={ {
-                        id: tc.id,
-                        name: tc.tool_name,
-                        args: tc.args,
-                        result: tc.result,
-                        status: tc.status === "failed" ? "error" : tc.status,
-                      } }
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-full flex-col p-6">
@@ -333,9 +264,13 @@ export default function AdminConversationsPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="sm" onClick={() => handleViewConversation(conv)}>
+                    <Link
+                      href={`/chat?id=${conv.id}`}
+                      className="text-foreground/40 hover:text-foreground inline-flex items-center gap-1 font-mono text-[11px] tracking-wider uppercase transition-colors"
+                    >
+                      <ExternalLink className="h-3 w-3" />
                       {t("view")}
-                    </Button>
+                    </Link>
                   </TableCell>
                 </TableRow>
               ))}

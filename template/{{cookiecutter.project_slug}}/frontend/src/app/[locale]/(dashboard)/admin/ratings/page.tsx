@@ -84,7 +84,7 @@ export default function AdminRatingsPage() {
     const params = new URLSearchParams({ export_format: exportFormat });
     if (filter !== "all") params.set("rating_filter", filter === "positive" ? "1" : "-1");
     if (commentsOnly) params.set("with_comments_only", "true");
-    window.open(`/api/v1/admin/ratings/export?${params}`, "_blank");
+    window.open(`/api/admin/ratings/export?${params}`, "_blank");
   };
 
   const totalPages = ratings ? Math.ceil(ratings.total / PAGE_SIZE) : 0;
