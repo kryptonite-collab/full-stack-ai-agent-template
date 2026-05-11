@@ -20,7 +20,9 @@ import app.repositories.plan as plan_repo
 {%- if cookiecutter.enable_email %}
 import app.repositories.subscription as subscription_repo
 {%- endif %}
+{%- if cookiecutter.enable_credits_system %}
 import app.repositories.usage_event as usage_event_repo
+{%- endif %}
 from app.services.billing.checkout_service import CheckoutService
 from app.services.billing.credit_service import CreditService
 from app.services.billing.exceptions import InvalidWebhookError
@@ -143,6 +145,8 @@ class BillingService:
     ) -> tuple[list[CreditTransaction], int]:
         return await self._credits.get_history(org_id, skip=skip, limit=limit)
 
+{%- if cookiecutter.enable_credits_system %}
+
     # -- Usage --
 
     async def get_usage_aggregate(self, org_id: uuid.UUID, *, days: int | None = None):
@@ -155,6 +159,7 @@ class BillingService:
 
     async def get_usage_timeline(self, org_id: uuid.UUID, *, days: int):
         return await usage_event_repo.daily_timeline(self.db, org_id, days=days)
+{%- endif %}
 
 {%- if cookiecutter.enable_email %}
 
@@ -225,7 +230,9 @@ import logging
 from sqlalchemy.orm import Session
 
 import app.repositories.plan as plan_repo
+{%- if cookiecutter.enable_credits_system %}
 import app.repositories.usage_event as usage_event_repo
+{%- endif %}
 from app.services.billing.checkout_service import CheckoutService
 from app.services.billing.credit_service import CreditService
 from app.services.billing.exceptions import InvalidWebhookError
@@ -331,6 +338,8 @@ class BillingService:
     ) -> tuple[list[CreditTransaction], int]:
         return self._credits.get_history(org_id, skip=skip, limit=limit)
 
+{%- if cookiecutter.enable_credits_system %}
+
     # -- Usage --
 
     def get_usage_aggregate(self, org_id: str, *, days: int | None = None):
@@ -343,6 +352,7 @@ class BillingService:
 
     def get_usage_timeline(self, org_id: str, *, days: int):
         return usage_event_repo.daily_timeline(self.db, org_id, days=days)
+{%- endif %}
 
 
 {%- else %}
