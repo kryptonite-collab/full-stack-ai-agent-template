@@ -465,6 +465,12 @@ def new(output: Path | None, no_input: bool, name: str | None, minimal: bool) ->
 @click.option(
     "--web-fetch", is_flag=True, default=False, help="Enable web fetch/scraping tool for AI agents"
 )
+@click.option(
+    "--charts",
+    is_flag=True,
+    default=False,
+    help="Enable the chart-generation tool for AI agents (line/bar/pie/area/scatter)",
+)
 @click.option("--session-management", is_flag=True, help="Enable session management")
 @click.option(
     "--reverse-proxy",
@@ -739,6 +745,7 @@ def create(
     websockets: bool,
     web_search: bool,
     web_fetch: bool,
+    charts: bool,
     session_management: bool,
     reverse_proxy: str,
     kubernetes: bool,
@@ -1166,6 +1173,7 @@ def create(
                 enable_websockets=websockets,
                 enable_web_search=web_search,
                 enable_web_fetch=web_fetch,
+                enable_charts=charts,
                 enable_session_management=session_management,
                 reverse_proxy=_rp_map[reverse_proxy],
                 enable_kubernetes=kubernetes,
@@ -1321,9 +1329,9 @@ def templates() -> None:
     console.print(
         "  --ai-framework pydantic_deep    PydanticDeep (deep agentic coding, Docker sandbox)"
     )
-    console.print("  --llm-provider openai           OpenAI (gpt-4o-mini)")
-    console.print("  --llm-provider anthropic        Anthropic (claude-sonnet-4-5)")
-    console.print("  --llm-provider google           Google Gemini (gemini-2.0-flash)")
+    console.print("  --llm-provider openai           OpenAI (gpt-5.5)")
+    console.print("  --llm-provider anthropic        Anthropic (claude-opus-4-7)")
+    console.print("  --llm-provider google           Google Gemini (gemini-2.5-flash)")
     console.print("  --llm-provider openrouter       OpenRouter (pydantic_ai only)")
     console.print(
         "  --websockets                    Enable WebSocket support (real-time chat streaming)"

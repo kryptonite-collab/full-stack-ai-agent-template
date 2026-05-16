@@ -331,18 +331,18 @@ class Settings(BaseSettings):
 {%- endif %}
 {%- if cookiecutter.use_all_providers %}
     # Multi-provider: model can come from any installed SDK. Prefix with the
-    # provider name (`openai/gpt-5-mini`, `anthropic/claude-sonnet-4-6`,
-    # `google/gemini-2.5-flash`, `openrouter/anthropic/claude-sonnet-4-6`)
+    # provider name (`openai/gpt-5.5`, `anthropic/claude-opus-4-7`,
+    # `google/gemini-2.5-flash`, `openrouter/anthropic/claude-opus-4-7`)
     # so the dispatcher in agents/assistant.py routes to the right backend.
-    AI_MODEL: str = "openai/gpt-5-mini"
+    AI_MODEL: str = "openai/gpt-5.5"
 {%- elif cookiecutter.use_openai %}
-    AI_MODEL: str = "gpt-5-mini"
+    AI_MODEL: str = "gpt-5.5"
 {%- elif cookiecutter.use_anthropic %}
-    AI_MODEL: str = "claude-sonnet-4-6"
+    AI_MODEL: str = "claude-opus-4-7"
 {%- elif cookiecutter.use_google %}
     AI_MODEL: str = "gemini-2.5-flash"
 {%- elif cookiecutter.use_openrouter %}
-    AI_MODEL: str = "anthropic/claude-sonnet-4-6"
+    AI_MODEL: str = "anthropic/claude-opus-4-7"
 {%- endif %}
     AI_TEMPERATURE: float = 0.7
     AI_THINKING_ENABLED: bool = False
@@ -350,46 +350,46 @@ class Settings(BaseSettings):
 {%- if cookiecutter.use_all_providers %}
     AI_AVAILABLE_MODELS: list[str] = [
         # OpenAI
+        "openai/gpt-5.5",
+        "openai/gpt-5.5-pro",
+        "openai/gpt-5.4",
         "openai/gpt-5-mini",
-        "openai/gpt-5",
-        "openai/gpt-4.1-mini",
         "openai/gpt-4.1",
-        "openai/gpt-4o-mini",
-        "openai/o4-mini",
-        "openai/o3",
         # Anthropic
+        "anthropic/claude-opus-4-7",
         "anthropic/claude-sonnet-4-6",
-        "anthropic/claude-haiku-3-5-20241022",
+        "anthropic/claude-haiku-4-5-20251001",
         # Google
         "google/gemini-2.5-flash",
         "google/gemini-2.5-pro",
         # OpenRouter (proxies many providers)
-        "openrouter/anthropic/claude-sonnet-4-6",
+        "openrouter/anthropic/claude-opus-4-7",
         "openrouter/deepseek/deepseek-r1",
     ]
 {%- elif cookiecutter.use_openai %}
     AI_AVAILABLE_MODELS: list[str] = [
+        "gpt-5.5",
+        "gpt-5.5-pro",
         "gpt-5.4",
+        "gpt-5.4-pro",
         "gpt-5.4-mini",
         "gpt-5.4-nano",
         "gpt-5-mini",
         "gpt-5-nano",
         "gpt-5",
-        "gpt-5.1",
-        "gpt-5.2",
-        "o4-mini",
-        "o3",
-        "o3-mini",
-        "gpt-4.1-mini",
         "gpt-4.1",
-        "gpt-4.1-nano",
-        "gpt-4o",
-        "gpt-4o-mini",
     ]
 {%- elif cookiecutter.use_anthropic %}
     AI_AVAILABLE_MODELS: list[str] = [
+        "claude-opus-4-7",
+        "claude-opus-4-6",
+        "claude-opus-4-5",
+        "claude-opus-4-1",
+        "claude-opus-4-20250514",
         "claude-sonnet-4-6",
-        "claude-sonnet-4-5-20241022",
+        "claude-sonnet-4-5",
+        "claude-sonnet-4-20250514",
+        "claude-haiku-4-5-20251001",
         "claude-haiku-3-5-20241022",
     ]
 {%- elif cookiecutter.use_google %}
@@ -400,8 +400,9 @@ class Settings(BaseSettings):
     ]
 {%- elif cookiecutter.use_openrouter %}
     AI_AVAILABLE_MODELS: list[str] = [
+        "anthropic/claude-opus-4-7",
         "anthropic/claude-sonnet-4-6",
-        "openai/gpt-5-mini",
+        "openai/gpt-5.5",
         "google/gemini-2.5-flash",
         "deepseek/deepseek-r1",
     ]

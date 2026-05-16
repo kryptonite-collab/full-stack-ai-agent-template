@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-05-17
+
+### Added
+
+- **Chart generation tool** (`enable_charts`) — optional `create_chart` tool letting the agent produce line/bar/pie/area/scatter charts. Returns a validated `ChartSpec` (data, series, custom style/palette/legend/axis) as JSON, so the same payload flows to every surface. Registered in **all 6 agent frameworks** (PydanticAI, LangChain, LangGraph, CrewAI, DeepAgents, PydanticDeep). Web chat renders it interactively with Recharts; Slack/Telegram get a server-side PNG via matplotlib (`charts_channel_png`, gated dep, with a markdown-table fallback). Wizard prompt + `--charts` CLI flag + `enable_charts` cookiecutter var
+- **Portable `fetch_url` tool** (`web_fetch_tool`) — SSRF-safe "read this web page" tool for LangChain/LangGraph/CrewAI/DeepAgents (which had no model-native web-fetch). Reuses `app.core.sanitize.validate_webhook_url`, re-validates every redirect hop, caps size/timeout, extracts readable text (BeautifulSoup). PydanticAI/PydanticDeep keep their native `WebFetch`. Closes the gap where `enable_web_fetch` was a silent no-op for those frameworks
+- **Web Search & Fetch offered for every agent framework** in the interactive wizard (was PydanticAI-only); CrewAI now actually attaches `search_web`/`fetch_url` to the research agent (they were registered but never used)
+- Gated test suites: `test_chart_tool.py`, `test_fetch_url.py`, `test_web_search.py`
+
+### Changed
+
+- **Refreshed default AI models** — OpenAI → `gpt-5.5`, Anthropic → `claude-opus-4-7`, OpenRouter → `anthropic/claude-opus-4-7`, multi-provider → `openai/gpt-5.5` (Google stays `gemini-2.5-flash`). Updated `AI_AVAILABLE_MODELS` (GPT-5.x frontier line; full Claude Opus/Sonnet/Haiku line) and Claude pricing in billing `MODEL_COSTS`; synced `.env`/`.env.example`/docs
+- **Rewrote the default agent system prompt** (outcome-first style) — real personality + answering policy + formatting. The RAG variant is no longer a straitjacket: the agent answers general-knowledge questions directly instead of replying "not in the knowledge base", and treats `search_documents` as a tool to use *when relevant* with a retrieval budget and citations
+- **`web_search` tool returns structured JSON** (`WebSearchResults`) instead of ad-hoc text, so the chat UI renders clickable titles, domains and snippets (added `parse_web_search`). Fixed stale frontend detection that meant the rich card never showed for LangChain/LangGraph/DeepAgents
+- **Removed the `.env.prod` / `.env.prod.example` abstraction** — production now uses the same `backend/.env` as dev (it already contained every variable `.env.prod.example` defined). `docker-compose.prod.yml` reads `env_file: ./backend/.env`; `make prod` checks for `backend/.env` and passes `--env-file backend/.env` to Compose. `.env.prod` removed from `.gitignore`. Migration: move any values from your old `.env.prod` into `backend/.env` (gitignored) on the server
+- **Chat UI: ordered message timeline** — a streamed assistant turn now renders as an ordered sequence of parts (thinking → tools → text → …) in true chronological order instead of three fixed slots, so multi-step turns display correctly. Provider-agnostic; CrewAI keeps its multi-message layout
+- **Tool-call cards redesigned** — collapsed by default to a clickable bar (tool name + input hint, e.g. the query/URL), expand to the formatted view, `</>` toggle for arguments + raw output. Chart cards auto-expand (they're only useful when visible). New generic fallback renderer displays any newly added backend tool sensibly with no frontend changes; removed the per-tool status icon
+
+### Fixed
+
+- **LangChain/LangGraph/DeepAgents streaming: tool-call arguments were empty in the web UI** — the token-chunk path emitted a premature `tool_call` with `args: {}` and poisoned the shared dedup set, suppressing the complete event. The `updates` stream is now the single source of truth (full args), with no duplicate/empty card
+- **Reasoning ("thinking") now streams reliably** — extracted via a shared helper, with a fallback that emits reasoning from the final message for providers that don't stream it as chunks
+- **`AIMessageChunk` merge crash** — `Additional kwargs key created_at … unsupported type <class 'float'>` on the OpenAI Responses API. Usage is now summed via `add_usage` instead of merging whole chunks
+- **DeepAgents tool calls never fired** — `_stream_update_event` checked the graph node `"agent"`, but `create_deep_agent` (deepagents 0.6.1 → LangChain `create_agent`) names it `"model"`. Tool calls, args and reasoning are now emitted for DeepAgents
+- **`KBSelector` infinite `GET /api/kb` request loop** when a workspace has no knowledge bases — a length-based effect re-fired after every empty fetch; replaced with a one-shot ref guard
+- **`test_agents.py` was not provider-gated** — it patched OpenAI-only symbols, breaking generation/tests for Anthropic/Google/OpenRouter (and the LangChain branch). PydanticAI now patches the single `_build_model` seam with a real `TestModel`; LangChain patches the provider-correct chat class
+
 ## [0.2.8] - 2026-05-11
 
 ### Added

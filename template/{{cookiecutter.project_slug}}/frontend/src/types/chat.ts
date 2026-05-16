@@ -43,6 +43,12 @@ export interface ChatMessage {
   /** Reasoning trace from extended-thinking models. Rendered dimmed +
    *  collapsible above the final response. */
   thinking?: string;
+  /** Ordered timeline of the assistant turn: reasoning, text and tool
+   *  calls in the exact order they occurred. Rendered in sequence so a
+   *  multi-step turn (think → tools → text → think → tools → text) shows
+   *  correctly. ``content``/``thinking``/``toolCalls`` are kept in sync as
+   *  flat aggregates for copy/persist/rating. */
+  parts?: MessagePart[];
 }
 
 export interface ToolCall {
@@ -52,6 +58,48 @@ export interface ToolCall {
   result?: unknown;
   status: "pending" | "running" | "completed" | "error";
 }
+
+export type MessagePartType = "thinking" | "text" | "tool";
+
+/** One ordered segment of an assistant turn. */
+export interface MessagePart {
+  id: string;
+  type: MessagePartType;
+  /** Text for "thinking"/"text" parts. */
+  content?: string;
+  /** Tool invocation for "tool" parts. */
+  toolCall?: ToolCall;
+}
+{%- if cookiecutter.enable_charts %}
+
+export type ChartType = "line" | "bar" | "pie" | "area" | "scatter";
+
+export interface ChartSeries {
+  key: string;
+  label?: string | null;
+  color?: string | null;
+}
+
+export interface ChartStyle {
+  palette?: string[] | null;
+  grid?: boolean;
+  legend?: boolean;
+  x_label?: string | null;
+  y_label?: string | null;
+  stacked?: boolean;
+}
+
+/** Structured chart payload produced by the agent's `create_chart` tool. */
+export interface ChartSpec {
+  kind: "chart";
+  chart_type: ChartType;
+  title: string;
+  data: Array<Record<string, unknown>>;
+  x_key: string;
+  series: ChartSeries[];
+  style: ChartStyle;
+}
+{%- endif %}
 
 // WebSocket event types from backend
 export type WSEventType =

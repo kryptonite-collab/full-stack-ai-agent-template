@@ -800,9 +800,9 @@ def prompt_llm_provider(ai_framework: AIFrameworkType) -> LLMProviderType:
     console.print()
 
     choices = [
-        questionary.Choice("OpenAI (gpt-4o-mini)", value=LLMProviderType.OPENAI),
-        questionary.Choice("Anthropic (claude-sonnet-4-5)", value=LLMProviderType.ANTHROPIC),
-        questionary.Choice("Google Gemini (gemini-2.0-flash)", value=LLMProviderType.GOOGLE),
+        questionary.Choice("OpenAI (gpt-5.5)", value=LLMProviderType.OPENAI),
+        questionary.Choice("Anthropic (claude-opus-4-7)", value=LLMProviderType.ANTHROPIC),
+        questionary.Choice("Google Gemini (gemini-2.5-flash)", value=LLMProviderType.GOOGLE),
     ]
 
     # OpenRouter available for PydanticAI and PydanticDeep (both use pydantic-ai)
@@ -823,36 +823,77 @@ def prompt_llm_provider(ai_framework: AIFrameworkType) -> LLMProviderType:
     )
 
 
-def prompt_pydantic_capabilities() -> tuple[bool, bool]:
-    """Prompt for PydanticAI built-in capabilities (WebSearch, WebFetch).
+def prompt_web_capabilities(ai_framework: AIFrameworkType) -> tuple[bool, bool]:
+    """Prompt for web search / web fetch.
+
+    PydanticAI and PydanticDeep use the model-native WebSearch/WebFetch
+    capabilities. LangChain, LangGraph, CrewAI and DeepAgents use a
+    Tavily-backed web search tool plus a portable fetch_url tool.
 
     Returns:
         Tuple of (enable_web_search, enable_web_fetch).
     """
+    native = ai_framework in (
+        AIFrameworkType.PYDANTIC_AI,
+        AIFrameworkType.PYDANTIC_DEEP,
+    )
+
     console.print()
-    console.print("[bold cyan]PydanticAI Capabilities[/]")
-    console.print("Built-in model capabilities (model must support them).")
+    console.print("[bold cyan]Web Search & Fetch[/]")
+    if native:
+        console.print("Built-in model capabilities (the model must support them).")
+    else:
+        console.print(
+            "Web search uses Tavily (needs TAVILY_API_KEY); "
+            "fetch reads a given URL's readable content."
+        )
     console.print()
+
+    search_q = (
+        "Enable WebSearch capability (model-native web search)?"
+        if native
+        else "Enable the web search tool (Tavily — needs TAVILY_API_KEY)?"
+    )
+    fetch_q = (
+        "Enable WebFetch capability (model-native URL fetching)?"
+        if native
+        else "Enable the fetch-URL tool (read a web page's content)?"
+    )
 
     enable_web_search = cast(
         bool,
-        _check_cancelled(
-            questionary.confirm(
-                "Enable WebSearch capability (model-native web search)?",
-                default=False,
-            ).ask()
-        ),
+        _check_cancelled(questionary.confirm(search_q, default=False).ask()),
     )
     enable_web_fetch = cast(
         bool,
+        _check_cancelled(questionary.confirm(fetch_q, default=False).ask()),
+    )
+    return enable_web_search, enable_web_fetch
+
+
+def prompt_charts() -> bool:
+    """Prompt for the agent chart-generation tool.
+
+    Returns:
+        Whether the chart tool is enabled.
+    """
+    console.print()
+    console.print("[bold cyan]Chart Generation Tool[/]")
+    console.print(
+        "Lets the agent produce line/bar/pie/area/scatter charts. Rendered "
+        "interactively in the web chat; sent as PNG images on Slack/Telegram."
+    )
+    console.print()
+
+    return cast(
+        bool,
         _check_cancelled(
             questionary.confirm(
-                "Enable WebFetch capability (model-native URL fetching)?",
+                "Enable the chart-generation tool for the agent?",
                 default=False,
             ).ask()
         ),
     )
-    return enable_web_search, enable_web_fetch
 
 
 def prompt_langsmith() -> bool:
@@ -1363,6 +1404,7 @@ def run_interactive_prompts() -> ProjectConfig:
         "enable_langsmith": False,
         "enable_web_search": False,
         "enable_web_fetch": False,
+        "enable_charts": False,
         "rag_features": RAGFeatures(),
         "orm_type": OrmType.SQLALCHEMY,
         "sandbox_backend": "state",
@@ -1486,15 +1528,15 @@ def run_interactive_prompts() -> ProjectConfig:
         else:
             state["llm_provider"] = prompt_llm_provider(state["ai_framework"])
 
-    def step_pydantic_capabilities() -> None:
-        if state["ai_framework"] == AIFrameworkType.PYDANTIC_AI:
+    def step_web_capabilities() -> None:
+        if state["ai_framework"] == AIFrameworkType.NONE:
+            state["enable_web_search"] = False
+            state["enable_web_fetch"] = False
+        else:
             (
                 state["enable_web_search"],
                 state["enable_web_fetch"],
-            ) = prompt_pydantic_capabilities()
-        else:
-            state["enable_web_search"] = False
-            state["enable_web_fetch"] = False
+            ) = prompt_web_capabilities(state["ai_framework"])
 
     def step_rag_config() -> None:
         if state["ai_framework"] == AIFrameworkType.NONE:
@@ -1514,6 +1556,12 @@ def run_interactive_prompts() -> ProjectConfig:
                     "enabling Docker automatically."
                 )
                 state["dev_tools"]["enable_docker"] = True
+
+    def step_charts() -> None:
+        if state["ai_framework"] == AIFrameworkType.NONE:
+            state["enable_charts"] = False
+        else:
+            state["enable_charts"] = prompt_charts()
 
     def step_langsmith() -> None:
         if state["ai_framework"] in (
@@ -1582,8 +1630,9 @@ def run_interactive_prompts() -> ProjectConfig:
         ("Observability (Logfire)", step_logfire),
         ("Agent Sandbox", step_sandbox_backend),
         ("LLM Provider", step_llm_provider),
-        ("PydanticAI Capabilities", step_pydantic_capabilities),
+        ("Web Search & Fetch", step_web_capabilities),
         ("RAG", step_rag_config),
+        ("Chart Tool", step_charts),
         ("LangSmith", step_langsmith),
         ("Messaging Channels", step_channels),
         ("Teams & Billing", step_teams_billing),
@@ -1629,6 +1678,7 @@ def run_interactive_prompts() -> ProjectConfig:
     llm_provider = state["llm_provider"]
     enable_web_search = state["enable_web_search"]
     enable_web_fetch = state["enable_web_fetch"]
+    enable_charts = state["enable_charts"]
     rag_features = state["rag_features"]
     enable_langsmith = state["enable_langsmith"]
     use_telegram = state["use_telegram"]
@@ -1670,6 +1720,7 @@ def run_interactive_prompts() -> ProjectConfig:
         enable_langsmith=enable_langsmith,
         enable_web_search=enable_web_search,
         enable_web_fetch=enable_web_fetch,
+        enable_charts=enable_charts,
         use_telegram=use_telegram,
         use_slack=use_slack,
         rate_limit_requests=rate_limit_requests,

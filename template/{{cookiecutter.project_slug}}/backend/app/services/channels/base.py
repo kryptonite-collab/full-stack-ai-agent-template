@@ -3,7 +3,11 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
+
+# Surface a conversation is happening on. "web" is the chat UI / API; the
+# others are messaging platforms. Extend this when adding new channels.
+ChannelType = Literal["web", "slack", "telegram"]
 
 # Default access policy applied to new channel bots.  Imported by models and
 # repositories so the literal is defined in exactly one place.
@@ -42,12 +46,20 @@ class IncomingMessage:
 
 @dataclass
 class OutgoingMessage:
-    """Reply to send back to the platform."""
+    """Reply to send back to the platform.
+
+    When ``image_png`` is set, adapters send it as a photo/file with
+    ``text`` used as the caption; otherwise a plain text message is sent.
+    """
 
     platform_chat_id: str
     text: str
     parse_mode: str | None = None  # "Markdown" | "HTML" | None
     reply_to_message_id: str | None = None
+{%- if cookiecutter.charts_channel_png %}
+    image_png: bytes | None = None
+    image_filename: str = "chart.png"
+{%- endif %}
 
 
 class ChannelAdapter(ABC):

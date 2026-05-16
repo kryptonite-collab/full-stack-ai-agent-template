@@ -152,15 +152,17 @@ volumes:
    cd your-project
    ```
 
-2. **Create `.env.prod` file**
+2. **Configure `backend/.env`**
    ```bash
-   cp .env.example .env.prod
-   # Edit with production values
+   cp backend/.env.example backend/.env
+   # Edit with real production values (the same file is used for dev and prod)
    ```
 
 3. **Build and start services**
    ```bash
-   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+   make prod
+   # equivalent to:
+   # docker compose --env-file backend/.env -f docker-compose.prod.yml up -d --build
    ```
 
 4. **Run database migrations**

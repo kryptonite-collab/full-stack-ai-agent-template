@@ -50,6 +50,18 @@ class SlackAdapter(ChannelAdapter):
         if "thread_ts" not in kwargs and msg.reply_to_message_id:
             kwargs["thread_ts"] = msg.reply_to_message_id
 
+{%- if cookiecutter.charts_channel_png %}
+        if msg.image_png is not None:
+            await client.files_upload_v2(
+                channel=channel,
+                file=msg.image_png,
+                filename=msg.image_filename,
+                initial_comment=msg.text,
+                thread_ts=kwargs.get("thread_ts"),
+            )
+            return
+{%- endif %}
+
         await client.chat_postMessage(**kwargs)
 
     # Polling — Socket Mode (development)

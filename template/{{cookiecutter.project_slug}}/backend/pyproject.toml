@@ -269,6 +269,12 @@ dependencies = [
 {%- if cookiecutter.enable_web_search %}
     "tavily-python>=0.5.0",
 {%- endif %}
+{%- if cookiecutter.web_fetch_tool %}
+    "beautifulsoup4>=4.12.0",
+{%- endif %}
+{%- if cookiecutter.charts_channel_png %}
+    "matplotlib>=3.9.0",
+{%- endif %}
 {%- if cookiecutter.use_telegram or cookiecutter.use_slack %}
     "cryptography>=44.0.0",
 {%- endif %}

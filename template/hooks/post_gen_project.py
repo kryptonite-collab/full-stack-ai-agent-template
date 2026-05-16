@@ -45,6 +45,9 @@ enable_rag_image_description = "{{ cookiecutter.enable_rag_image_description }}"
 enable_google_drive_ingestion = "{{ cookiecutter.enable_google_drive_ingestion }}" == "True"
 enable_s3_ingestion = "{{ cookiecutter.enable_s3_ingestion }}" == "True"
 enable_web_search = "{{ cookiecutter.enable_web_search }}" == "True"
+web_fetch_tool = "{{ cookiecutter.web_fetch_tool }}" == "True"
+enable_charts = "{{ cookiecutter.enable_charts }}" == "True"
+charts_channel_png = "{{ cookiecutter.charts_channel_png }}" == "True"
 use_pydantic_deep = "{{ cookiecutter.use_pydantic_deep }}" == "True"
 use_telegram = "{{ cookiecutter.use_telegram }}" == "True"
 use_slack = "{{ cookiecutter.use_slack }}" == "True"
@@ -126,6 +129,20 @@ if not use_pydantic_deep:
     remove_file(os.path.join(backend_app, "agents", "pydantic_deep_assistant.py"))
 if not enable_web_search:
     remove_file(os.path.join(backend_app, "agents", "tools", "web_search.py"))
+    remove_file(os.path.join(os.getcwd(), "backend", "tests", "test_web_search.py"))
+if not web_fetch_tool:
+    remove_file(os.path.join(backend_app, "agents", "tools", "fetch_url.py"))
+    remove_file(os.path.join(os.getcwd(), "backend", "tests", "test_fetch_url.py"))
+if not enable_charts:
+    remove_file(os.path.join(backend_app, "agents", "tools", "chart_tool.py"))
+    remove_file(os.path.join(backend_app, "agents", "tools", "chart_render.py"))
+    remove_file(os.path.join(os.getcwd(), "backend", "tests", "test_chart_tool.py"))
+    if use_frontend:
+        frontend_src = os.path.join(os.getcwd(), "frontend", "src")
+        remove_file(os.path.join(frontend_src, "components", "chat", "chart-message.tsx"))
+elif not charts_channel_png:
+    # Chart tool enabled but no Slack/Telegram — PNG renderer not needed.
+    remove_file(os.path.join(backend_app, "agents", "tools", "chart_render.py"))
 
 # --- No-AI mode: remove all AI/chat/conversation files ---
 if not use_ai:
@@ -326,7 +343,6 @@ if not enable_docker:
         "docker-compose.dev.yml",
         "docker-compose.prod.yml",
         "docker-compose.frontend.yml",
-        ".env.prod.example",
     ):
         remove_file(os.path.join(project_root, compose_file))
 

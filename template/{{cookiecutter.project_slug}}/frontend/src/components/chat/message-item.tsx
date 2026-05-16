@@ -77,117 +77,180 @@ export function MessageItem({ message, groupPosition, onRegenerate }: MessageIte
         )}
       >
         {/* Attachments — images render as previews, others as file chips */}
-        {isUser && (() => {
-          const attachments: AttachmentDisplay[] =
-            message.files && message.files.length > 0
-              ? message.files.map((f) => ({ kind: kindFor(f), file: f }))
-              : (message.fileIds ?? []).map((id) => ({ kind: "unknown" as const, id }));
-          if (attachments.length === 0) return null;
-          return (
-            <div className="flex flex-wrap gap-2">
-              {attachments.map((att) => (att.kind === "image" ? (
-                <button
-                  type="button"
-                  key={att.file.id}
-                  onClick={() => openPreview(att.file)}
-                  className="hover:ring-foreground/30 block overflow-hidden rounded-xl border ring-2 ring-transparent transition-all"
-                  title={`Open ${att.file.filename}`}
-                >
-                  <Image
-                    src={getFileUrl(att.file.id)}
-                    alt={att.file.filename}
-                    width={320}
-                    height={256}
-                    className="h-auto max-h-64 w-auto max-w-xs object-contain"
-                    unoptimized
-                  />
-                </button>
-              ) : "file" in att ? (
-                <FileChip
-                  key={att.file.id}
-                  filename={att.file.filename}
-                  hint={att.file.mime_type}
-                  onClick={() => openPreview(att.file)}
-                />
-              ) : (
-                <FileChip
-                  key={att.id}
-                  filename="Attached file"
-                  href={getFileUrl(att.id)}
-                />
-              )))}
-            </div>
-          );
-        })()}
-
-        {/* Thinking indicator */}
-        {!isUser &&
-          message.isStreaming &&
-          !message.content &&
-          (!message.toolCalls || message.toolCalls.length === 0) && (
-            <div
-              className="bg-muted flex items-center gap-2 rounded-2xl rounded-tl-sm px-4 py-2.5"
-              role="status"
-              aria-live="polite"
-            >
-              <div className="flex gap-1" aria-hidden="true">
-                <span className="bg-muted-foreground/40 h-1.5 w-1.5 animate-bounce rounded-full [animation-delay:0ms]" />
-                <span className="bg-muted-foreground/40 h-1.5 w-1.5 animate-bounce rounded-full [animation-delay:150ms]" />
-                <span className="bg-muted-foreground/40 h-1.5 w-1.5 animate-bounce rounded-full [animation-delay:300ms]" />
-              </div>
-              <span className="text-muted-foreground text-xs">Thinking...</span>
-            </div>
-          )}
-
-        {/* Reasoning trace from extended-thinking models */}
-        {!isUser && message.thinking && (
-          <details
-            className="border-foreground/10 bg-muted/40 group rounded-2xl rounded-tl-sm border px-3 py-2 sm:px-4"
-            open={Boolean(message.isStreaming)}
-          >
-            <summary className="text-foreground/55 hover:text-foreground/80 flex cursor-pointer items-center gap-2 font-mono text-[10px] tracking-wider uppercase select-none">
-              <span className="bg-foreground/30 inline-block h-1.5 w-1.5 rounded-full" />
-              Thinking
-              {message.isStreaming && (
-                <span className="bg-foreground/40 inline-block h-1 w-1 animate-pulse rounded-full" />
-              )}
-            </summary>
-            <pre className="text-foreground/65 mt-2 max-h-72 overflow-y-auto font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
-              {message.thinking}
-            </pre>
-          </details>
-        )}
-
-        {/* Message bubble */}
-        {message.content && (
-          <div
-            className={cn(
-              "relative rounded-2xl px-3 py-2 sm:px-4 sm:py-2.5",
-              isUser
-                ? "bg-primary text-primary-foreground rounded-tr-sm"
-                : "bg-muted rounded-tl-sm",
-            )}
-          >
-            {isUser ? (
-              <p className="text-sm break-words whitespace-pre-wrap">{message.content}</p>
-            ) : (
-              <div className="prose-sm max-w-none text-sm">
-                <MarkdownContent content={message.content} />
-                {message.isStreaming && (
-                  <span className="ml-1 inline-block h-4 w-1.5 animate-pulse rounded-full bg-current" />
+        {isUser &&
+          (() => {
+            const attachments: AttachmentDisplay[] =
+              message.files && message.files.length > 0
+                ? message.files.map((f) => ({ kind: kindFor(f), file: f }))
+                : (message.fileIds ?? []).map((id) => ({ kind: "unknown" as const, id }));
+            if (attachments.length === 0) return null;
+            return (
+              <div className="flex flex-wrap gap-2">
+                {attachments.map((att) =>
+                  att.kind === "image" ? (
+                    <button
+                      type="button"
+                      key={att.file.id}
+                      onClick={() => openPreview(att.file)}
+                      className="hover:ring-foreground/30 block overflow-hidden rounded-xl border ring-2 ring-transparent transition-all"
+                      title={`Open ${att.file.filename}`}
+                    >
+                      <Image
+                        src={getFileUrl(att.file.id)}
+                        alt={att.file.filename}
+                        width={320}
+                        height={256}
+                        className="h-auto max-h-64 w-auto max-w-xs object-contain"
+                        unoptimized
+                      />
+                    </button>
+                  ) : "file" in att ? (
+                    <FileChip
+                      key={att.file.id}
+                      filename={att.file.filename}
+                      hint={att.file.mime_type}
+                      onClick={() => openPreview(att.file)}
+                    />
+                  ) : (
+                    <FileChip key={att.id} filename="Attached file" href={getFileUrl(att.id)} />
+                  ),
                 )}
               </div>
-            )}
-          </div>
-        )}
+            );
+          })()}
 
-        {message.toolCalls && message.toolCalls.length > 0 && (
-          <div className="w-full space-y-2">
-            {message.toolCalls.map((toolCall) => (
-              <ToolCallCard key={toolCall.id} toolCall={toolCall} />
-            ))}
-          </div>
-        )}
+        {(() => {
+          const parts = message.parts ?? [];
+          const useParts = !isUser && parts.length > 0;
+
+          // "Thinking…" placeholder — shown until anything streams in.
+          const showPlaceholder =
+            !isUser &&
+            message.isStreaming &&
+            !message.content &&
+            parts.length === 0 &&
+            (!message.toolCalls || message.toolCalls.length === 0);
+
+          const ThinkingBlock = ({ text, open }: { text: string; open: boolean }) => (
+            <details
+              className="border-foreground/10 bg-muted/40 group rounded-2xl rounded-tl-sm border px-3 py-2 sm:px-4"
+              open={open}
+            >
+              <summary className="text-foreground/55 hover:text-foreground/80 flex cursor-pointer items-center gap-2 font-mono text-[10px] tracking-wider uppercase select-none">
+                <span className="bg-foreground/30 inline-block h-1.5 w-1.5 rounded-full" />
+                Thinking
+                {message.isStreaming && (
+                  <span className="bg-foreground/40 inline-block h-1 w-1 animate-pulse rounded-full" />
+                )}
+              </summary>
+              <pre className="text-foreground/65 mt-2 max-h-72 overflow-y-auto font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
+                {text}
+              </pre>
+            </details>
+          );
+
+          const TextBubble = ({
+            text,
+            showCursor,
+          }: {
+            text: string;
+            showCursor: boolean;
+          }) => (
+            <div
+              className={cn(
+                "relative rounded-2xl px-3 py-2 sm:px-4 sm:py-2.5",
+                isUser
+                  ? "bg-primary text-primary-foreground rounded-tr-sm"
+                  : "bg-muted rounded-tl-sm",
+              )}
+            >
+              {isUser ? (
+                <p className="text-sm break-words whitespace-pre-wrap">{text}</p>
+              ) : (
+                <div className="prose-sm max-w-none text-sm">
+                  <MarkdownContent content={text} />
+                  {showCursor && (
+                    <span className="ml-1 inline-block h-4 w-1.5 animate-pulse rounded-full bg-current" />
+                  )}
+                </div>
+              )}
+            </div>
+          );
+
+          return (
+            <>
+              {showPlaceholder && (
+                <div
+                  className="bg-muted flex items-center gap-2 rounded-2xl rounded-tl-sm px-4 py-2.5"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <div className="flex gap-1" aria-hidden="true">
+                    <span className="bg-muted-foreground/40 h-1.5 w-1.5 animate-bounce rounded-full [animation-delay:0ms]" />
+                    <span className="bg-muted-foreground/40 h-1.5 w-1.5 animate-bounce rounded-full [animation-delay:150ms]" />
+                    <span className="bg-muted-foreground/40 h-1.5 w-1.5 animate-bounce rounded-full [animation-delay:300ms]" />
+                  </div>
+                  <span className="text-muted-foreground text-xs">Thinking...</span>
+                </div>
+              )}
+
+              {useParts
+                ? /* Ordered timeline: render each part in arrival order. */
+                  parts.map((part, i) => {
+                    if (part.type === "thinking" && part.content) {
+                      return (
+                        <ThinkingBlock
+                          key={part.id}
+                          text={part.content}
+                          open={Boolean(message.isStreaming) && i === parts.length - 1}
+                        />
+                      );
+                    }
+                    if (part.type === "tool" && part.toolCall) {
+                      return (
+                        <div key={part.id} className="w-full">
+                          <ToolCallCard toolCall={part.toolCall} />
+                        </div>
+                      );
+                    }
+                    if (part.type === "text" && part.content) {
+                      return (
+                        <TextBubble
+                          key={part.id}
+                          text={part.content}
+                          showCursor={
+                            Boolean(message.isStreaming) && i === parts.length - 1
+                          }
+                        />
+                      );
+                    }
+                    return null;
+                  })
+                : /* Legacy fallback: CrewAI / user / pre-parts messages. */
+                  <>
+                    {!isUser && message.thinking && (
+                      <ThinkingBlock
+                        text={message.thinking}
+                        open={Boolean(message.isStreaming)}
+                      />
+                    )}
+                    {message.content && (
+                      <TextBubble
+                        text={message.content}
+                        showCursor={!isUser && Boolean(message.isStreaming)}
+                      />
+                    )}
+                    {message.toolCalls && message.toolCalls.length > 0 && (
+                      <div className="w-full space-y-2">
+                        {message.toolCalls.map((toolCall) => (
+                          <ToolCallCard key={toolCall.id} toolCall={toolCall} />
+                        ))}
+                      </div>
+                    )}
+                  </>}
+            </>
+          );
+        })()}
 
         {!message.isStreaming && message.content && (
           <div className={cn("flex items-center gap-2", isUser && "flex-row-reverse")}>

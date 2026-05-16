@@ -20,6 +20,10 @@ from app.repositories import (
 from app.services.agent_invocation import AgentInvocationService
 from app.services.channels import get_adapter
 from app.services.channels.base import IncomingMessage, OutgoingMessage
+{%- if cookiecutter.enable_charts %}
+from app.agents.tools.chart_tool import parse_chart_spec
+from app.agents.tools.chart_render import chart_to_markdown, render_chart_png
+{%- endif %}
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +174,16 @@ class ChannelMessageRouter:
 
         # 8. Send tool event summaries (if any)
         for te in tool_events:
+{%- if cookiecutter.enable_charts %}
+            if te.tool_name == "create_chart_tool":
+                spec = parse_chart_spec(te.result)
+                if spec is not None:
+                    try:
+                        await self._send_chart(bot, incoming, spec)
+                    except Exception:
+                        logger.debug("Failed to send chart for %s", te.tool_name)
+                    continue
+{%- endif %}
             args_str = ", ".join(f"{k}={v!r}" for k, v in te.args.items()) if te.args else ""
             result_preview = (te.result[:200] + "...") if len(te.result) > 200 else te.result
             tool_msg = f"🔧 {te.tool_name}({args_str})\n→ {result_preview}"
@@ -670,4 +684,26 @@ class ChannelMessageRouter:
                 incoming.bot_id,
                 incoming.platform_chat_id,
             )
+{%- if cookiecutter.enable_charts %}
+
+    async def _send_chart(self, bot: Any, incoming: IncomingMessage, spec: Any) -> None:
+        """Render a chart spec to PNG and send it; fall back to a text table."""
+        try:
+            png = render_chart_png(spec)
+        except Exception:
+            logger.debug("Chart PNG render failed; sending text fallback")
+            await self._send_reply(bot, incoming, chart_to_markdown(spec))
+            return
+
+        adapter = get_adapter(incoming.platform)
+        decrypted_token = decrypt_token(bot.token_encrypted)
+        out = OutgoingMessage(
+            platform_chat_id=incoming.platform_chat_id,
+            text=spec.title,
+            reply_to_message_id=incoming.message_id,
+            image_png=png,
+            image_filename="chart.png",
+        )
+        await adapter.send_message(decrypted_token, out)
+{%- endif %}
 {%- endif %}

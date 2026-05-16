@@ -123,7 +123,7 @@ make run           # run uvicorn locally with --reload
 |---|---|---|
 | `make dev` | `docker-compose.dev.yml` | Local development with hot-reload + bind-mounted source. |
 | `make stage` | `docker-compose.yml` | Production-like build, no bind mounts, runs on localhost. Good for sanity-checking before deploy. |
-| `make prod` | `docker-compose.prod.yml` | Production. Requires `.env.prod` (copy from `.env.prod.example`) and an external Nginx using `nginx/nginx.conf`. |
+| `make prod` | `docker-compose.prod.yml` | Production. Requires `backend/.env` (copy from `backend/.env.example`, fill real secrets) and an external Nginx using `nginx/nginx.conf`. |
 
 Each env has matching `-down`, `-logs`, `-rebuild` siblings (e.g. `make stage-down`).
 
@@ -251,7 +251,7 @@ EMAIL_FROM=noreply@your-domain.com
 
 See `backend/.env.example` for the full list with comments.
 
-For production, **never** commit secrets — copy `.env.prod.example` → `.env.prod` and inject via your platform's secret manager (Doppler, AWS Secrets Manager, GitHub Actions secrets, etc.).
+For production, **never** commit secrets — `backend/.env` is gitignored. Fill it with real values on the server (or inject them via your platform's secret manager: Doppler, AWS Secrets Manager, GitHub Actions secrets, etc.). The same `backend/.env` is used for dev and prod — there is no separate `.env.prod`.
 
 ---
 
@@ -346,7 +346,7 @@ Set in the Vercel dashboard:
 
 ```bash
 # 1. SSH to the box, clone the repo
-# 2. Copy .env.prod.example → .env.prod, fill in real secrets
+# 2. cp backend/.env.example backend/.env, fill in real secrets
 # 3. Configure nginx using nginx/nginx.conf as reference
 # 4. Bring up the stack:
 make prod

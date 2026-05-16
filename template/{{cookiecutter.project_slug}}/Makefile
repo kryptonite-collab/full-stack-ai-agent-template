@@ -3,7 +3,7 @@
 # === Environments ===========================================================
 # `make dev`   — local development (docker-compose.dev.yml + bind-mounted source)
 # `make stage` — staging (docker-compose.yml — built images, no live reload)
-# `make prod`  — production (docker-compose.prod.yml — needs .env.prod + nginx)
+# `make prod`  — production (docker-compose.prod.yml — needs backend/.env + nginx)
 # Each env has matching -down / -logs / -rebuild siblings.
 
 {%- if cookiecutter.enable_docker and (cookiecutter.use_postgresql or cookiecutter.use_sqlite) %}
@@ -121,22 +121,22 @@ stage:
 stage-down:
 	docker compose -f docker-compose.yml down
 
-# === Production: external Nginx, .env.prod required, real secrets ===
+# === Production: external Nginx, real secrets in backend/.env ===
 prod:
-	@test -f .env.prod || (echo "❌ .env.prod missing — copy from .env.prod.example and fill in values" && exit 1)
-	docker compose -f docker-compose.prod.yml up -d --build
+	@test -f backend/.env || (echo "❌ backend/.env missing — run 'cp backend/.env.example backend/.env' and fill in real secrets" && exit 1)
+	docker compose --env-file backend/.env -f docker-compose.prod.yml up -d --build
 {%- if cookiecutter.use_postgresql or cookiecutter.use_sqlite %}
 	@echo "▶ Waiting for DB then running migrations…"
 	@sleep 5
-	docker compose -f docker-compose.prod.yml exec -T app {{ cookiecutter.project_slug }} db upgrade
+	docker compose --env-file backend/.env -f docker-compose.prod.yml exec -T app {{ cookiecutter.project_slug }} db upgrade
 {%- endif %}
 	@echo "✅ Production stack up. Configure your nginx host with nginx/nginx.conf"
 
 prod-down:
-	docker compose -f docker-compose.prod.yml down
+	docker compose --env-file backend/.env -f docker-compose.prod.yml down
 
 prod-logs:
-	docker compose -f docker-compose.prod.yml logs -f
+	docker compose --env-file backend/.env -f docker-compose.prod.yml logs -f
 
 # Legacy alias
 quickstart: dev
@@ -430,7 +430,7 @@ help:
 	@echo ""
 	@echo "📦 Other environments:"
 	@echo "  make stage          Production-like stack on localhost (no bind mounts)"
-	@echo "  make prod           Production stack (requires .env.prod + nginx)"
+	@echo "  make prod           Production stack (requires backend/.env + nginx)"
 	@echo ""
 {%- endif %}
 	@echo "Setup (without Docker):"

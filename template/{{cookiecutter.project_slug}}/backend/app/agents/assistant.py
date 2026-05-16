@@ -51,6 +51,9 @@ from app.agents.tools import get_current_datetime
 {%- if cookiecutter.enable_rag %}
 from app.agents.tools.rag_tool import search_knowledge_base
 {%- endif %}
+{%- if cookiecutter.enable_charts %}
+from app.agents.tools.chart_tool import create_chart
+{%- endif %}
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -248,6 +251,41 @@ class AssistantAgent:
             except Exception as e:
                 raise ModelRetry("Knowledge base temporarily unavailable, please try again.") from e
 {%- endif %}
+{%- endif %}
+
+{%- if cookiecutter.enable_charts %}
+        @agent.tool_plain
+        def create_chart_tool(
+            chart_type: str,
+            title: str,
+            data: list[dict[str, Any]],
+            series: list[dict[str, Any]] | None = None,
+            x_key: str = "x",
+            style: dict[str, Any] | None = None,
+        ) -> str:
+            """Create a chart (line/bar/pie/area/scatter) to visualize data for the user.
+
+            Use whenever the user asks to plot, chart, graph, or visualize numbers,
+            trends, comparisons, or distributions. Do not repeat the returned JSON
+            back to the user — just briefly describe the chart you created.
+
+            Args:
+                chart_type: One of "line", "bar", "pie", "area", "scatter".
+                title: Short chart title.
+                data: Row dicts, e.g. [{"x": "Jan", "revenue": 120}]. For pie:
+                    [{"x": "Chrome", "value": 64}, ...].
+                series: Optional [{"key", "label"?, "color"?}] selecting fields to plot.
+                x_key: Row field for the x-axis / pie label (default "x").
+                style: Optional {"palette", "grid", "legend", "x_label", "y_label", "stacked"}.
+            """
+            return create_chart(
+                chart_type=chart_type,  # type: ignore[arg-type]
+                title=title,
+                data=data,
+                series=series,
+                x_key=x_key,
+                style=style,
+            )
 {%- endif %}
 
 

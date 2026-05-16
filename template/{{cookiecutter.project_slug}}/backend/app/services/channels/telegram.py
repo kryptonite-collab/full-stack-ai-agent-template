@@ -43,6 +43,18 @@ class TelegramAdapter(ChannelAdapter):
         )
         reply_to = int(msg.reply_to_message_id) if msg.reply_to_message_id else None
         try:
+{%- if cookiecutter.charts_channel_png %}
+            if msg.image_png is not None:
+                from aiogram.types import BufferedInputFile
+
+                await bot.send_photo(
+                    chat_id=msg.platform_chat_id,
+                    photo=BufferedInputFile(msg.image_png, filename=msg.image_filename),
+                    caption=msg.text,
+                    reply_to_message_id=reply_to,
+                )
+                return
+{%- endif %}
             try:
                 await bot.send_message(
                     chat_id=msg.platform_chat_id,

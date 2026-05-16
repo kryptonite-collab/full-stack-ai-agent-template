@@ -54,7 +54,7 @@ group is for and which are required vs optional.
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `OPENAI_API_KEY` | **required** | — | From platform.openai.com |
-| `AI_MODEL` | optional | `gpt-4o-mini` | Default model used by agent |
+| `AI_MODEL` | optional | `gpt-5.5` | Default model used by agent (provider-specific) |
 {%- endif %}
 {%- if cookiecutter.use_anthropic %}
 | `ANTHROPIC_API_KEY` | **required** | — | From console.anthropic.com |

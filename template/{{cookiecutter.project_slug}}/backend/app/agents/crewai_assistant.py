@@ -290,6 +290,17 @@ class CrewAIAssistant:
         research_tools = []
         task_description_suffix = ""
 {%- endif %}
+{%- if cookiecutter.enable_web_search %}
+        research_tools.append("search_web")
+{%- endif %}
+{%- if cookiecutter.web_fetch_tool %}
+        research_tools.append("fetch_url")
+{%- endif %}
+{%- if cookiecutter.enable_charts %}
+        writer_tools = ["create_chart"]
+{%- else %}
+        writer_tools = []
+{%- endif %}
         return CrewConfig(
             name="assistant_crew",
             process="sequential",
@@ -306,7 +317,7 @@ class CrewAIAssistant:
                     role="Content Writer",
                     goal="Create clear, well-structured responses for the user",
                     backstory="You are a skilled writer who produces high-quality, readable content. You take research findings and transform them into helpful responses.",
-                    tools=[],
+                    tools=writer_tools,
                     allow_delegation=False,
                 ),
             ],
@@ -385,6 +396,54 @@ class CrewAIAssistant:
                 """Search the web for current information."""
                 return web_search_sync(query=query)
             tool_map["search_web"] = search_web
+{%- endif %}
+{%- if cookiecutter.web_fetch_tool %}
+            from app.agents.tools.fetch_url import fetch_url_sync
+            from langchain_core.tools import tool as lc_tool_fetch
+
+            @lc_tool_fetch
+            def fetch_url(url: str) -> str:
+                """Fetch a web page and return its readable text content."""
+                return fetch_url_sync(url=url)
+
+            tool_map["fetch_url"] = fetch_url
+{%- endif %}
+{%- if cookiecutter.enable_charts %}
+            from app.agents.tools.chart_tool import create_chart
+            from langchain_core.tools import tool as lc_tool_charts
+
+            @lc_tool_charts
+            def create_chart_tool(
+                chart_type: str,
+                title: str,
+                data: list[dict[str, Any]],
+                series: list[dict[str, Any]] | None = None,
+                x_key: str = "x",
+                style: dict[str, Any] | None = None,
+            ) -> str:
+                """Create a chart (line/bar/pie/area/scatter) to visualize data.
+
+                Use whenever the user asks to plot/chart/graph/visualize numbers.
+                Do not repeat the returned JSON back — just describe the chart.
+
+                Args:
+                    chart_type: "line", "bar", "pie", "area", or "scatter".
+                    title: Short chart title.
+                    data: Row dicts, e.g. [{"x": "Jan", "revenue": 120}].
+                    series: Optional [{"key", "label"?, "color"?}].
+                    x_key: Row field for the x-axis / pie label (default "x").
+                    style: Optional {"palette", "grid", "legend", "x_label", "y_label", "stacked"}.
+                """
+                return create_chart(
+                    chart_type=chart_type,  # type: ignore[arg-type]
+                    title=title,
+                    data=data,
+                    series=series,
+                    x_key=x_key,
+                    style=style,
+                )
+
+            tool_map["create_chart"] = create_chart_tool
 {%- endif %}
             return [tool_map[name] for name in agent_tools if name in tool_map]
 

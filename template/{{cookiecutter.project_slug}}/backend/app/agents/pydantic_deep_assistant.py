@@ -40,6 +40,9 @@ from app.agents.tools.rag_tool import _active_kb_collections, search_knowledge_b
 from app.agents.tools.rag_tool import search_knowledge_base
 {%- endif %}
 {%- endif %}
+{%- if cookiecutter.enable_charts %}
+from app.agents.tools.chart_tool import create_chart
+{%- endif %}
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -86,6 +89,43 @@ async def _rag_search(query: str, top_k: int = 5) -> str:
 
 
 {%- endif %}
+{%- if cookiecutter.enable_charts %}
+
+
+def create_chart_tool(
+    chart_type: str,
+    title: str,
+    data: list[dict[str, Any]],
+    series: list[dict[str, Any]] | None = None,
+    x_key: str = "x",
+    style: dict[str, Any] | None = None,
+) -> str:
+    """Create a chart (line/bar/pie/area/scatter) to visualize data for the user.
+
+    Use whenever the user asks to plot, chart, graph, or visualize numbers,
+    trends, comparisons, or distributions. Do not repeat the returned JSON
+    back to the user — just briefly describe the chart you created.
+
+    Args:
+        chart_type: One of "line", "bar", "pie", "area", "scatter".
+        title: Short chart title.
+        data: Row dicts, e.g. [{"x": "Jan", "revenue": 120}]. For pie:
+            [{"x": "Chrome", "value": 64}, ...].
+        series: Optional [{"key", "label"?, "color"?}] selecting fields to plot.
+        x_key: Row field for the x-axis / pie label (default "x").
+        style: Optional {"palette", "grid", "legend", "x_label", "y_label", "stacked"}.
+    """
+    return create_chart(
+        chart_type=chart_type,  # type: ignore[arg-type]
+        title=title,
+        data=data,
+        series=series,
+        x_key=x_key,
+        style=style,
+    )
+
+
+{%- endif %}
 
 
 class PydanticDeepAssistant:
@@ -126,10 +166,10 @@ class PydanticDeepAssistant:
         Otherwise prepends the provider prefix from LLM_PROVIDER setting.
 
         Examples:
-            "gpt-4o-mini"         → "openai:gpt-4o-mini"
-            "claude-sonnet-4-6"   → "anthropic:claude-sonnet-4-6"
+            "gpt-5.5"             → "openai:gpt-5.5"
+            "claude-opus-4-7"     → "anthropic:claude-opus-4-7"
             "gemini-2.5-flash"    → "google-gla:gemini-2.5-flash"
-            "openai:gpt-4o"       → "openai:gpt-4o"  (unchanged)
+            "openai:gpt-5.5"      → "openai:gpt-5.5"  (unchanged)
         """
         if ":" in self.model_name:
             return self.model_name
@@ -182,12 +222,18 @@ class PydanticDeepAssistant:
             self.conversation_id,
         )
 
-{%- if cookiecutter.enable_rag %}
-        # RAG search exposed as a standalone pydantic-ai Tool.
-        # pydantic-deep merges extra tools into the agent automatically.
+{%- if cookiecutter.enable_rag or cookiecutter.enable_charts %}
+        # Extra tools exposed as standalone pydantic-ai Tools.
+        # pydantic-deep merges them into the agent automatically.
         from pydantic_ai import Tool as PAITool
 
-        extra_tools: list[Any] = [PAITool(_rag_search)]
+        extra_tools: list[Any] = []
+{%- if cookiecutter.enable_rag %}
+        extra_tools.append(PAITool(_rag_search))
+{%- endif %}
+{%- if cookiecutter.enable_charts %}
+        extra_tools.append(PAITool(create_chart_tool))
+{%- endif %}
 {%- else %}
         extra_tools: list[Any] = []
 {%- endif %}
