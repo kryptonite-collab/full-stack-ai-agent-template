@@ -35,8 +35,17 @@ export function useChat(options: UseChatOptions = {}) {
   const { conversationId, onConversationCreated } = options;
   const { setCurrentConversationId, currentConversationId: currentConversationIdFromStore } =
     useConversationStore();
-  const { messages, addMessage, updateMessage, addToolCall, updateToolCall, clearMessages } =
-    useChatStore();
+  const {
+    messages,
+    addMessage,
+    updateMessage,
+    addToolCall,
+    appendTextDelta,
+    appendThinkingDelta,
+    addToolCallPart,
+    updateToolCallPart,
+    clearMessages,
+  } = useChatStore();
 
   const [isProcessing, setIsProcessing] = useState(false);
   // Held in a ref instead of state because the WS handler reads it
@@ -86,6 +95,10 @@ export function useChat(options: UseChatOptions = {}) {
           timestamp: new Date(),
           isStreaming: true,
           toolCalls: [],
+          // Streamed turns (empty seed) use the ordered parts timeline.
+          // CrewAI seeds content directly → keep parts undefined so it
+          // falls back to the legacy layout (it's already multi-message).
+          parts: content === "" ? [] : undefined,
           groupId: currentGroupIdRef.current || undefined,
           conversationId: effectiveConversationId,
           isTemporaryId: true,
@@ -159,29 +172,24 @@ export function useChat(options: UseChatOptions = {}) {
         }
 
         case "text_delta": {
-          // Append text delta to current message
+          // Append to the ordered parts timeline (extends the trailing
+          // text part or starts a new one after a thinking/tool part).
           if (currentMessageIdRef.current) {
             const content = (wsEvent.data as { index: number; content: string }).content;
-            updateMessage(currentMessageIdRef.current, (msg) => ({
-              ...msg,
-              content: msg.content + content,
-            }));
+            appendTextDelta(currentMessageIdRef.current, content);
           }
           break;
         }
 
         case "thinking_delta": {
-          // Reasoning trace from extended-thinking models. Stored on a
-          // separate field so the UI can render it dimmed and collapsible.
+          // Reasoning trace from extended-thinking models — its own
+          // ordered part so it renders before the tools/text that follow.
           if (!currentMessageIdRef.current) {
             createNewMessage("");
           }
           if (currentMessageIdRef.current) {
             const content = (wsEvent.data as { index: number; content: string }).content;
-            updateMessage(currentMessageIdRef.current, (msg) => ({
-              ...msg,
-              thinking: (msg.thinking ?? "") + content,
-            }));
+            appendThinkingDelta(currentMessageIdRef.current, content);
           }
           break;
         }
@@ -312,7 +320,7 @@ export function useChat(options: UseChatOptions = {}) {
               args,
               status: "running",
             };
-            addToolCall(currentMessageIdRef.current, toolCall);
+            addToolCallPart(currentMessageIdRef.current, toolCall);
           }
           break;
         }
@@ -324,7 +332,7 @@ export function useChat(options: UseChatOptions = {}) {
               tool_call_id: string;
               content: string;
             };
-            updateToolCall(currentMessageIdRef.current, tool_call_id, {
+            updateToolCallPart(currentMessageIdRef.current, tool_call_id, {
               result: content,
               status: "completed",
             });
@@ -336,18 +344,18 @@ export function useChat(options: UseChatOptions = {}) {
           // Finalize message
           if (currentMessageIdRef.current) {
             const { output } = wsEvent.data as { output: string };
-            if (output) {
-              updateMessage(currentMessageIdRef.current, (msg) => ({
-                ...msg,
-                content: msg.content || output,
-                isStreaming: false,
-              }));
-            } else {
-              updateMessage(currentMessageIdRef.current, (msg) => ({
-                ...msg,
-                isStreaming: false,
-              }));
+            // If the model returned text only via final_result (no streamed
+            // text_delta), append it as the trailing text part.
+            const fr = useChatStore
+              .getState()
+              .messages.find((m) => m.id === currentMessageIdRef.current);
+            if (output && fr && !fr.content) {
+              appendTextDelta(currentMessageIdRef.current, output);
             }
+            updateMessage(currentMessageIdRef.current, (msg) => ({
+              ...msg,
+              isStreaming: false,
+            }));
           }
           setIsProcessing(false);
           // Don't clear currentMessageId yet - we need it for message_saved event
@@ -358,12 +366,16 @@ export function useChat(options: UseChatOptions = {}) {
         case "error": {
           // Handle error
           if (currentMessageIdRef.current) {
+            const id = currentMessageIdRef.current;
             const { message } = wsEvent.data as { message: string };
-            updateMessage(currentMessageIdRef.current, (msg) => ({
-              ...msg,
-              content: msg.content + `\n\n❌ Error: ${message || "Unknown error"}`,
-              isStreaming: false,
-            }));
+            const errText = `\n\n❌ Error: ${message || "Unknown error"}`;
+            const cur = useChatStore.getState().messages.find((m) => m.id === id);
+            if (cur?.parts) {
+              appendTextDelta(id, errText);
+            } else {
+              updateMessage(id, (msg) => ({ ...msg, content: msg.content + errText }));
+            }
+            updateMessage(id, (msg) => ({ ...msg, isStreaming: false }));
           }
           setIsProcessing(false);
           break;
@@ -389,11 +401,15 @@ export function useChat(options: UseChatOptions = {}) {
           });
           // Show pending tools in the current message
           if (currentMessageIdRef.current) {
+            const id = currentMessageIdRef.current;
             const toolNames = action_requests.map((ar) => ar.tool_name).join(", ");
-            updateMessage(currentMessageIdRef.current, (msg) => ({
-              ...msg,
-              content: msg.content + `\n\n⏸️ Waiting for approval: ${toolNames}`,
-            }));
+            const waitText = `\n\n⏸️ Waiting for approval: ${toolNames}`;
+            const cur = useChatStore.getState().messages.find((m) => m.id === id);
+            if (cur?.parts) {
+              appendTextDelta(id, waitText);
+            } else {
+              updateMessage(id, (msg) => ({ ...msg, content: msg.content + waitText }));
+            }
           }
           break;
         }
@@ -417,7 +433,10 @@ export function useChat(options: UseChatOptions = {}) {
       addMessage,
       updateMessage,
       addToolCall,
-      updateToolCall,
+      appendTextDelta,
+      appendThinkingDelta,
+      addToolCallPart,
+      updateToolCallPart,
       setCurrentConversationId,
       setCurrentMessageId,
       onConversationCreated,

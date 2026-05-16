@@ -324,6 +324,7 @@ class ProjectConfig(BaseModel):
     enable_langsmith: bool = False
     enable_web_search: bool = False
     enable_web_fetch: bool = False
+    enable_charts: bool = False
     use_telegram: bool = False
     use_slack: bool = False
     enable_cors: bool = True
@@ -791,6 +792,18 @@ class ProjectConfig(BaseModel):
             "enable_langsmith": self.enable_langsmith,
             "enable_web_search": self.enable_web_search,
             "enable_web_fetch": self.enable_web_fetch,
+            # PydanticAI/PydanticDeep have a model-native WebFetch capability;
+            # the other frameworks don't, so they get a portable fetch_url tool.
+            "web_fetch_tool": self.enable_web_fetch
+            and self.ai_framework
+            in (
+                AIFrameworkType.LANGCHAIN,
+                AIFrameworkType.LANGGRAPH,
+                AIFrameworkType.CREWAI,
+                AIFrameworkType.DEEPAGENTS,
+            ),
+            "enable_charts": self.enable_charts,
+            "charts_channel_png": self.enable_charts and (self.use_slack or self.use_telegram),
             "enable_webhooks": self.enable_webhooks,
             # Legacy fixed values (WebSocket always uses JWT)
             "websocket_auth": "jwt",

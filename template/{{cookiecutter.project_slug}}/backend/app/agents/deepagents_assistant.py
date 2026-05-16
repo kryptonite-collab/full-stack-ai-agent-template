@@ -32,7 +32,7 @@ from deepagents import create_deep_agent
 from deepagents.backends import StateBackend
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-{%- if cookiecutter.enable_rag or cookiecutter.enable_web_search %}
+{%- if cookiecutter.enable_rag or cookiecutter.enable_web_search or cookiecutter.web_fetch_tool %}
 from langchain_core.tools import tool
 {%- endif %}
 from langgraph.checkpoint.memory import MemorySaver
@@ -56,12 +56,18 @@ from app.agents.tools import get_current_datetime
 {%- if cookiecutter.enable_web_search %}
 from app.agents.tools.web_search import web_search
 {%- endif %}
+{%- if cookiecutter.web_fetch_tool %}
+from app.agents.tools.fetch_url import fetch_url
+{%- endif %}
 {%- if cookiecutter.enable_rag %}
 {%- if cookiecutter.enable_teams %}
 from app.agents.tools.rag_tool import _active_kb_collections, search_knowledge_base
 {%- else %}
 from app.agents.tools.rag_tool import search_knowledge_base
 {%- endif %}
+{%- endif %}
+{%- if cookiecutter.enable_charts %}
+from app.agents.tools.chart_tool import create_chart
 {%- endif %}
 from app.core.config import settings
 
@@ -84,6 +90,22 @@ async def web_search_tool(query: str, max_results: int = 5) -> str:
         Formatted string with search results including titles, URLs, and content.
     """
     return await web_search(query, max_results)
+{%- endif %}
+{%- if cookiecutter.web_fetch_tool %}
+@tool
+async def fetch_url_tool(url: str) -> str:
+    """Fetch a web page and return its readable text content.
+
+    Use this to read a specific URL the user gave you (an article, doc, or
+    page). Distinct from web search, which finds pages.
+
+    Args:
+        url: The absolute http(s) URL to fetch.
+
+    Returns:
+        The page title and main text with markup stripped.
+    """
+    return await fetch_url(url)
 {%- endif %}
 
 
@@ -131,6 +153,48 @@ DEEPAGENTS_CUSTOM_TOOLS = []
 {%- endif %}
 {%- if cookiecutter.enable_web_search %}
 DEEPAGENTS_CUSTOM_TOOLS.append(web_search_tool)
+{%- endif %}
+{%- if cookiecutter.web_fetch_tool %}
+DEEPAGENTS_CUSTOM_TOOLS.append(fetch_url_tool)
+{%- endif %}
+{%- if cookiecutter.enable_charts %}
+
+
+@tool
+def create_chart_tool(
+    chart_type: str,
+    title: str,
+    data: list[dict[str, Any]],
+    series: list[dict[str, Any]] | None = None,
+    x_key: str = "x",
+    style: dict[str, Any] | None = None,
+) -> str:
+    """Create a chart (line/bar/pie/area/scatter) to visualize data for the user.
+
+    Use whenever the user asks to plot, chart, graph, or visualize numbers,
+    trends, comparisons, or distributions. Do not repeat the returned JSON
+    back to the user — just briefly describe the chart you created.
+
+    Args:
+        chart_type: One of "line", "bar", "pie", "area", "scatter".
+        title: Short chart title.
+        data: Row dicts, e.g. [{"x": "Jan", "revenue": 120}]. For pie:
+            [{"x": "Chrome", "value": 64}, ...].
+        series: Optional [{"key", "label"?, "color"?}] selecting fields to plot.
+        x_key: Row field for the x-axis / pie label (default "x").
+        style: Optional {"palette", "grid", "legend", "x_label", "y_label", "stacked"}.
+    """
+    return create_chart(
+        chart_type=chart_type,  # type: ignore[arg-type]
+        title=title,
+        data=data,
+        series=series,
+        x_key=x_key,
+        style=style,
+    )
+
+
+DEEPAGENTS_CUSTOM_TOOLS.append(create_chart_tool)
 {%- endif %}
 
 

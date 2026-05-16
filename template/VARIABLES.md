@@ -281,8 +281,11 @@ These variables are set automatically by the generator.
 | `use_google` | bool | `false` | Google Gemini is selected | Computed from `llm_provider` |
 | `use_openrouter` | bool | `false` | OpenRouter is selected | Computed from `llm_provider` |
 | `enable_langsmith` | bool | `false` | Enable LangSmith observability (tracing, prompt management) | Requires LangChain, LangGraph, or DeepAgents |
-| `enable_web_search` | bool | `false` | Enable WebSearch capability for PydanticAI agents | PydanticAI only |
-| `enable_web_fetch` | bool | `false` | Enable WebFetch capability for PydanticAI agents | PydanticAI only |
+| `enable_web_search` | bool | `false` | Web search. PydanticAI/PydanticDeep use the model-native WebSearch capability; LangChain/LangGraph/CrewAI/DeepAgents use a Tavily-backed tool (needs `TAVILY_API_KEY`) | Requires an AI framework |
+| `enable_web_fetch` | bool | `false` | Web fetch. PydanticAI/PydanticDeep use the model-native WebFetch capability; LangChain/LangGraph/CrewAI/DeepAgents use the portable `fetch_url` tool | Requires an AI framework |
+| `web_fetch_tool` | bool | `false` | Computed: portable `fetch_url` tool is generated | `enable_web_fetch` and framework is LangChain/LangGraph/CrewAI/DeepAgents |
+| `enable_charts` | bool | `false` | Enable the chart-generation tool (line/bar/pie/area/scatter); interactive in web chat, PNG on Slack/Telegram | Requires an AI framework |
+| `charts_channel_png` | bool | `false` | Computed: render charts to PNG for messaging channels | `enable_charts` and (`use_slack` or `use_telegram`) |
 
 **Notes:**
 

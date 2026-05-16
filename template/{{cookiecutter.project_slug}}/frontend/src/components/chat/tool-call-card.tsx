@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, Badge, Button } from "@/components/ui";
+{%- if cookiecutter.enable_charts %}
+import { useEffect, useState, type MouseEvent } from "react";
+{%- else %}
+import { useState, type MouseEvent } from "react";
+{%- endif %}
+import { Card, CardContent, Button } from "@/components/ui";
 import type { ToolCall } from "@/types";
 import {
   Wrench,
-  CheckCircle,
-  Loader2,
-  AlertCircle,
   Clock,
   Calendar,
   FileText,
@@ -16,9 +17,16 @@ import {
   Link,
   ChevronDown,
   ChevronUp,
+  Code2,
+{%- if cookiecutter.enable_charts %}
+  BarChart3,
+{%- endif %}
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CopyButton } from "./copy-button";
+{%- if cookiecutter.enable_charts %}
+import { ChartMessage, parseChartResult } from "./chart-message";
+{%- endif %}
 
 interface ToolCallCardProps {
   toolCall: ToolCall;
@@ -249,71 +257,91 @@ function ScoreDot({ score }: { score: number }) {
   );
 }
 
-interface WebResultItem {
-  index: number;
+interface WebHit {
   title: string;
   url: string;
   content: string;
+  score?: number | null;
 }
 
-function parseWebResults(result: string): WebResultItem[] {
-  const items: WebResultItem[] = [];
-  const pattern = /\[(\d+)\]\s*(.+?)\n\s*URL:\s*(\S+)\n\s*([\s\S]*?)(?=\n\[\d+\]|$)/g;
-  let match;
-  while ((match = pattern.exec(result)) !== null) {
-    items.push({
-      index: parseInt(match[1] ?? "0"),
-      title: (match[2] ?? "").trim(),
-      url: (match[3] ?? "").trim(),
-      content: (match[4] ?? "").trim(),
-    });
-  }
-  return items;
+interface WebSearchPayload {
+  query: string;
+  results: WebHit[];
 }
 
-function WebSearchResults({ result }: { result: string }) {
-  const items = parseWebResults(result);
-
-  if (items.length === 0) {
-    if (result.includes("No web results")) {
-      return (
-        <div className="text-muted-foreground flex items-center gap-2 py-2 text-sm">
-          <Globe className="h-4 w-4" />
-          No web results found
-        </div>
-      );
+/** Parse a structured `web_search` tool result, or null if it isn't one
+ *  (error string / legacy text → caller falls back to the default renderer). */
+function parseWebSearch(result: string): WebSearchPayload | null {
+  try {
+    const p = JSON.parse(result);
+    if (
+      p &&
+      typeof p === "object" &&
+      p.kind === "web_search" &&
+      Array.isArray(p.results)
+    ) {
+      return { query: String(p.query ?? ""), results: p.results as WebHit[] };
     }
-    return null;
+  } catch {
+    /* not JSON — fall back to the raw renderer */
+  }
+  return null;
+}
+
+function domainOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function WebSearchResults({ data }: { data: WebSearchPayload }) {
+  if (data.results.length === 0) {
+    return (
+      <div className="text-muted-foreground flex items-center gap-2 py-2 text-sm">
+        <Globe className="h-4 w-4" />
+        No web results found
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-2 py-1">
-      <div className="text-muted-foreground flex items-center gap-2 text-xs">
-        <Globe className="h-3.5 w-3.5" />
-        {items.length} web result{items.length !== 1 ? "s" : ""}
+    <div className="space-y-3 py-1">
+      <div className="text-foreground/55 flex items-center gap-2 font-mono text-[10px] tracking-wider uppercase">
+        <Globe className="h-3 w-3" />
+        <span>
+          {data.results.length} web result{data.results.length !== 1 ? "s" : ""}
+        </span>
       </div>
-      {items.map((item) => (
-        <div key={item.index} className="bg-background rounded-md border p-2.5">
-          <div className="flex items-start gap-2">
-            <Badge variant="secondary" className="mt-0.5 shrink-0 px-1 py-0 text-[10px]">
-              [{item.index}]
-            </Badge>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-medium">{item.title}</p>
-              <a
-                href={item.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary flex items-center gap-1 truncate text-[10px] hover:underline"
-              >
-                <Link className="h-2.5 w-2.5 shrink-0" />
-                {item.url}
-              </a>
-              <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">{item.content}</p>
+
+      <div className="border-foreground/10 divide-foreground/8 overflow-hidden rounded-xl border divide-y">
+        {data.results.map((hit, i) => (
+          <a
+            key={`${hit.url}-${i}`}
+            href={hit.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:bg-foreground/[0.03] block px-3 py-2.5 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <span className="bg-foreground/8 text-foreground/65 inline-flex h-5 min-w-[1.5rem] shrink-0 items-center justify-center rounded px-1 font-mono text-[10px] tabular-nums">
+                {i + 1}
+              </span>
+              <p className="text-foreground truncate text-xs font-medium">{hit.title}</p>
             </div>
-          </div>
-        </div>
-      ))}
+            <div className="text-primary mt-1 flex items-center gap-1 truncate pl-[calc(1.5rem+0.5rem)] text-[10px]">
+              <Link className="h-2.5 w-2.5 shrink-0" />
+              {domainOf(hit.url)}
+            </div>
+            {hit.content && (
+              <p className="text-foreground/55 mt-1 line-clamp-2 pl-[calc(1.5rem+0.5rem)] text-[11px] leading-relaxed">
+                {hit.content}
+              </p>
+            )}
+          </a>
+        ))}
+      </div>
     </div>
   );
 }
@@ -345,23 +373,138 @@ function isEmptyArgs(args: unknown): boolean {
   return false;
 }
 
+/** Raw view: arguments + the exact tool output, monospace, unparsed. */
+function RawToolView({
+  toolCall,
+  resultText,
+}: {
+  toolCall: ToolCall;
+  resultText: string;
+}) {
+  return (
+    <div className="space-y-3">
+      {isEmptyArgs(toolCall.args) ? (
+        <p className="text-muted-foreground text-xs italic">No arguments</p>
+      ) : (
+        <div className="group relative">
+          <div className="mb-1 flex items-center justify-between">
+            <p className="text-foreground/55 font-mono text-[10px] tracking-wider uppercase">
+              Arguments
+            </p>
+            <CopyButton
+              text={formatArgs(toolCall.args)}
+              className="opacity-0 group-hover:opacity-100"
+            />
+          </div>
+          <pre className="border-foreground/10 bg-background/60 scrollbar-thin overflow-x-auto rounded-lg border p-2.5 font-mono text-[11px] leading-relaxed">
+            {formatArgs(toolCall.args)}
+          </pre>
+        </div>
+      )}
+      {toolCall.result !== undefined && resultText !== "" && (
+        <div className="group relative">
+          <div className="mb-1 flex items-center justify-between">
+            <p className="text-foreground/55 font-mono text-[10px] tracking-wider uppercase">
+              Result
+            </p>
+            <CopyButton text={resultText} className="opacity-0 group-hover:opacity-100" />
+          </div>
+          <pre className="border-foreground/10 bg-background/60 max-h-72 scrollbar-thin overflow-x-auto overflow-y-auto rounded-lg border p-2.5 font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap">
+            {resultText}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Default formatted view for any tool without a specialized renderer.
+ *  Pretty-prints JSON output, otherwise shows readable wrapped text — so a
+ *  newly added backend tool renders sensibly with no frontend changes. */
+function GenericToolResult({
+  toolCall,
+  resultText,
+}: {
+  toolCall: ToolCall;
+  resultText: string;
+}) {
+  let prettyJson: string | null = null;
+  try {
+    const parsed = JSON.parse(resultText);
+    if (parsed && typeof parsed === "object") {
+      prettyJson = JSON.stringify(parsed, null, 2);
+    }
+  } catch {
+    /* not JSON — render as text */
+  }
+
+  if (toolCall.status !== "completed" && !resultText) {
+    return (
+      <p className="text-muted-foreground py-2 text-xs italic">
+        {toolCall.status === "error" ? "Tool failed." : "Running…"}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-3 py-1">
+      {!isEmptyArgs(toolCall.args) && (
+        <div className="group relative">
+          <div className="mb-1 flex items-center justify-between">
+            <p className="text-foreground/55 font-mono text-[10px] tracking-wider uppercase">
+              Arguments
+            </p>
+            <CopyButton
+              text={formatArgs(toolCall.args)}
+              className="opacity-0 group-hover:opacity-100"
+            />
+          </div>
+          <pre className="border-foreground/10 bg-background/60 scrollbar-thin overflow-x-auto rounded-lg border p-2.5 font-mono text-[11px] leading-relaxed">
+            {formatArgs(toolCall.args)}
+          </pre>
+        </div>
+      )}
+      {resultText &&
+        (prettyJson ? (
+          <pre className="border-foreground/10 bg-background/60 max-h-80 scrollbar-thin overflow-x-auto overflow-y-auto rounded-lg border p-2.5 font-mono text-[11px] leading-relaxed">
+            {prettyJson}
+          </pre>
+        ) : (
+          <p className="text-foreground/80 max-h-80 overflow-y-auto text-[13px] leading-relaxed break-words whitespace-pre-wrap">
+            {resultText}
+          </p>
+        ))}
+    </div>
+  );
+}
+
 // --- Main component ---
 
 export function ToolCallCard({ toolCall }: ToolCallCardProps) {
+  // Collapsed by default — the bar acts as the toggle. `showRaw` swaps the
+  // formatted view for args + raw output (the </> button). Charts are the
+  // exception: they're only useful when visible, so expand them by default.
+  const [expanded, setExpanded] = useState(
+{%- if cookiecutter.enable_charts %}
+    toolCall.name === "create_chart_tool" &&
+      toolCall.status === "completed" &&
+      parseChartResult(toolCall.result) !== null,
+{%- else %}
+    false,
+{%- endif %}
+  );
   const [showRaw, setShowRaw] = useState(false);
 
-  const statusConfig = {
-    pending: { icon: Loader2, color: "text-muted-foreground", animate: true },
-    running: { icon: Loader2, color: "text-blue-500", animate: true },
-    completed: { icon: CheckCircle, color: "text-green-500", animate: false },
-    error: { icon: AlertCircle, color: "text-red-500", animate: false },
-  };
-
-  const {
-    icon: StatusIcon,
-    color,
-    animate,
-  } = statusConfig[toolCall.status] || statusConfig.pending;
+  // Short input hint shown in the collapsed bar — the query for search
+  // tools, the URL for fetch_url, etc. (any tool with a url/query arg).
+  const urlArg = toolCall.args?.url;
+  const queryArg = toolCall.args?.query;
+  const inputHint =
+    typeof urlArg === "string"
+      ? urlArg
+      : typeof queryArg === "string"
+        ? queryArg
+        : null;
 
   const resultText =
     toolCall.result !== undefined
@@ -376,110 +519,142 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
     (toolCall.name === "search_knowledge_base" || toolCall.name === "search_documents") &&
     toolCall.status === "completed" &&
     typeof toolCall.result === "string";
-  const isWebSearch =
-    (toolCall.name === "web_search" || toolCall.name === "search_web") &&
+  const webResults =
+    (toolCall.name === "web_search_tool" || toolCall.name === "search_web") &&
     toolCall.status === "completed" &&
-    typeof toolCall.result === "string";
+    typeof toolCall.result === "string"
+      ? parseWebSearch(toolCall.result)
+      : null;
+  const isWebSearch = webResults !== null;
+{%- if cookiecutter.enable_charts %}
+  const chartSpec =
+    toolCall.name === "create_chart_tool" && toolCall.status === "completed"
+      ? parseChartResult(toolCall.result)
+      : null;
+  const isChart = chartSpec !== null;
+  // A chart that finishes after this card mounted (live streaming) won't
+  // have triggered the initial-state default — expand it on transition.
+  useEffect(() => {
+    if (isChart) setExpanded(true);
+  }, [isChart]);
+{%- endif %}
 
-  const hasSpecialRenderer = isDateTime || isRAGSearch || isWebSearch;
+  const hasSpecialRenderer =
+    isDateTime ||
+    isRAGSearch ||
+    isWebSearch
+{%- if cookiecutter.enable_charts %}
+    || isChart
+{%- endif %}
+  ;
+
+  const friendlyName = isDateTime
+    ? "Current Date & Time"
+    : isRAGSearch
+      ? "Knowledge Base Search"
+      : isWebSearch
+        ? "Web Search"
+{%- if cookiecutter.enable_charts %}
+        : isChart
+          ? "Chart"
+{%- endif %}
+        : toolCall.name;
+
+  const ToolIcon = isDateTime
+    ? Clock
+    : isRAGSearch
+      ? Search
+      : isWebSearch
+        ? Globe
+{%- if cookiecutter.enable_charts %}
+        : isChart
+          ? BarChart3
+{%- endif %}
+        : Wrench;
+
+  const toggleExpanded = () => {
+    setExpanded((prev) => {
+      const next = !prev;
+      if (!next) setShowRaw(false);
+      return next;
+    });
+  };
+
+  const toggleRaw = (e: MouseEvent) => {
+    e.stopPropagation();
+    setShowRaw((r) => !r);
+    setExpanded(true);
+  };
 
   return (
     <Card className="bg-muted/50">
-      <CardHeader className="px-3 py-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {isDateTime ? (
-              <Clock className="text-primary h-4 w-4" />
-            ) : isRAGSearch ? (
-              <Search className="text-primary h-4 w-4" />
-            ) : isWebSearch ? (
-              <Globe className="text-primary h-4 w-4" />
-            ) : (
-              <Wrench className="text-muted-foreground h-4 w-4" />
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={toggleExpanded}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggleExpanded();
+          }
+        }}
+        className="hover:bg-foreground/[0.03] flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left transition-colors"
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <ToolIcon
+            className={cn(
+              "h-4 w-4 shrink-0",
+              hasSpecialRenderer ? "text-primary" : "text-muted-foreground",
             )}
-            <CardTitle className="text-sm font-medium">
-              {isDateTime
-                ? "Current Date & Time"
-                : isRAGSearch
-                  ? "Knowledge Base Search"
-                  : isWebSearch
-                    ? "Web Search"
-                    : toolCall.name}
-            </CardTitle>
-            {(isRAGSearch || isWebSearch) && toolCall.args?.query ? (
-              <span className="text-muted-foreground max-w-[200px] truncate text-xs italic">
-                &ldquo;{String(toolCall.args.query)}&rdquo;
-              </span>
-            ) : null}
-          </div>
-          <div className="flex items-center gap-1">
-            {hasSpecialRenderer && toolCall.status === "completed" && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => setShowRaw(!showRaw)}
-                title={showRaw ? "Show formatted" : "Show raw"}
-              >
-                {showRaw ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              </Button>
-            )}
-            <StatusIcon className={cn("h-4 w-4", color, animate && "animate-spin")} />
-          </div>
+          />
+          <span className="truncate text-sm font-medium">{friendlyName}</span>
+          {inputHint ? (
+            <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs italic">
+              {inputHint}
+            </span>
+          ) : null}
         </div>
-      </CardHeader>
-      <CardContent className="px-3 py-2">
-        {/* Specialized rendering */}
-        {toolCall.status === "completed" && !showRaw && isDateTime && (
-          <DateTimeResult result={resultText} />
-        )}
-        {toolCall.status === "completed" && !showRaw && isRAGSearch && (
-          <RAGSearchResults result={resultText} />
-        )}
-        {toolCall.status === "completed" && !showRaw && isWebSearch && (
-          <WebSearchResults result={resultText} />
-        )}
-
-        {/* Raw/default rendering */}
-        {(!hasSpecialRenderer || showRaw || toolCall.status !== "completed") && (
-          <div className="space-y-3">
-            {/* Arguments */}
-            {isEmptyArgs(toolCall.args) ? (
-              <p className="text-muted-foreground text-xs italic">No arguments</p>
-            ) : (
-              <div className="group relative">
-                <div className="mb-1 flex items-center justify-between">
-                  <p className="text-foreground/55 font-mono text-[10px] tracking-wider uppercase">
-                    Arguments
-                  </p>
-                  <CopyButton
-                    text={formatArgs(toolCall.args)}
-                    className="opacity-0 group-hover:opacity-100"
-                  />
-                </div>
-                <pre className="border-foreground/10 bg-background/60 scrollbar-thin overflow-x-auto rounded-lg border p-2.5 font-mono text-[11px] leading-relaxed">
-                  {formatArgs(toolCall.args)}
-                </pre>
-              </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "text-muted-foreground hover:bg-foreground/10 hover:text-foreground h-6 w-6 transition-colors",
+              showRaw && "text-primary",
             )}
+            onClick={toggleRaw}
+            title={showRaw ? "Show formatted view" : "Show arguments + raw output"}
+          >
+            <Code2 className="h-3.5 w-3.5" />
+          </Button>
+          {expanded ? (
+            <ChevronUp className="text-muted-foreground h-4 w-4" />
+          ) : (
+            <ChevronDown className="text-muted-foreground h-4 w-4" />
+          )}
+        </div>
+      </div>
 
-            {/* Result */}
-            {toolCall.result !== undefined && resultText !== "" && (
-              <div className="group relative">
-                <div className="mb-1 flex items-center justify-between">
-                  <p className="text-foreground/55 font-mono text-[10px] tracking-wider uppercase">
-                    Result
-                  </p>
-                  <CopyButton text={resultText} className="opacity-0 group-hover:opacity-100" />
-                </div>
-                <pre className="border-foreground/10 bg-background/60 max-h-48 scrollbar-thin overflow-x-auto overflow-y-auto rounded-lg border p-2.5 font-mono text-[11px] leading-relaxed break-words whitespace-pre-wrap">
-                  {resultText}
-                </pre>
-              </div>
-            )}
-          </div>
-        )}
-      </CardContent>
+      {expanded && (
+        <CardContent className="px-3 pt-0 pb-3">
+          {showRaw ? (
+            <RawToolView toolCall={toolCall} resultText={resultText} />
+          ) : toolCall.status === "completed" && isDateTime ? (
+            <DateTimeResult result={resultText} />
+          ) : toolCall.status === "completed" && isRAGSearch ? (
+            <RAGSearchResults result={resultText} />
+          ) : toolCall.status === "completed" && isWebSearch && webResults ? (
+            <WebSearchResults data={webResults} />
+{%- if cookiecutter.enable_charts %}
+          ) : toolCall.status === "completed" && isChart && chartSpec ? (
+            <ChartMessage spec={chartSpec} />
+{%- endif %}
+          ) : (
+            <GenericToolResult toolCall={toolCall} resultText={resultText} />
+          )}
+        </CardContent>
+      )}
     </Card>
   );
 }

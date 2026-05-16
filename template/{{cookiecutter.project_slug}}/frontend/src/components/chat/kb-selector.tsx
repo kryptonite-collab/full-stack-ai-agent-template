@@ -1,7 +1,7 @@
 {%- if cookiecutter.enable_teams and cookiecutter.enable_rag %}
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Database, Lock, Sparkles, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -38,11 +38,15 @@ export function KBSelector() {
   const toggleKB = useKBSelectionStore((s) => s.toggle);
   const hydrate = useKBSelectionStore((s) => s.hydrateFromConversation);
 
-  // Lazy-load KBs the first time the popover opens; cheap, won't refetch on
-  // every open since the hook keeps state across renders.
+  // Fetch KBs exactly once on mount. A ref guard (not kbs.length) is required:
+  // when the workspace has no KBs the result stays empty, so a length-based
+  // condition would re-satisfy after every fetch and loop forever.
+  const fetchedRef = useRef(false);
   useEffect(() => {
-    if (kbs.length === 0 && !isLoading) fetchKBs();
-  }, [kbs.length, isLoading, fetchKBs]);
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    fetchKBs();
+  }, [fetchKBs]);
 
   // Hydrate from a saved conversation so its persisted selection wins over
   // the local draft on open.

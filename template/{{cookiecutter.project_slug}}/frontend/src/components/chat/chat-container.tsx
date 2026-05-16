@@ -104,19 +104,47 @@ function AuthenticatedChatContainer() {
     if (currentMessages.length > 0) {
       clearMessages();
       currentMessages.forEach((msg) => {
+        const toolCalls = msg.tool_calls?.map((tc) => ({
+          id: tc.tool_call_id,
+          name: tc.tool_name,
+          args: tc.args,
+          result: tc.result,
+          status: (tc.status === "failed" ? "error" : tc.status) as
+            | "pending"
+            | "running"
+            | "completed"
+            | "error",
+        }));
+        // Reconstruct an ordered timeline for assistant turns. The DB has no
+        // interleaving metadata, so we use the realistic order: tools ran
+        // before the final answer → tool parts first, then the text.
+        const parts =
+          msg.role === "assistant"
+            ? [
+                ...(toolCalls ?? []).map((tc) => ({
+                  id: tc.id,
+                  type: "tool" as const,
+                  toolCall: tc,
+                })),
+                ...(msg.content
+                  ? [
+                      {
+                        id: `${msg.id}-text`,
+                        type: "text" as const,
+                        content: msg.content,
+                      },
+                    ]
+                  : []),
+              ]
+            : undefined;
         addChatMessage({
           id: msg.id,
           role: msg.role,
           content: msg.content,
           timestamp: new Date(msg.created_at),
           conversationId: msg.conversation_id,
-          toolCalls: msg.tool_calls?.map((tc) => ({
-            id: tc.tool_call_id,
-            name: tc.tool_name,
-            args: tc.args,
-            result: tc.result,
-            status: tc.status === "failed" ? "error" : tc.status,
-          })),
+          toolCalls,
+          parts,
           user_rating: msg.user_rating ?? undefined,
           rating_count: msg.rating_count ?? undefined,
           files:

@@ -24,12 +24,20 @@ MODEL_COSTS: dict[str, ModelCost] = {
     "o1-mini": ModelCost(3.00, 12.00),
     "o3": ModelCost(10.00, 40.00),
     "o4-mini": ModelCost(1.10, 4.40),
-    # Anthropic
-    "claude-3-5-sonnet-20241022": ModelCost(3.00, 15.00, 1.50),
-    "claude-3-5-haiku-20241022": ModelCost(0.80, 4.00, 0.40),
-    "claude-opus-4-20250514": ModelCost(15.00, 75.00, 7.50),
-    "claude-sonnet-4-5": ModelCost(3.00, 15.00, 1.50),
-    "claude-haiku-4-5-20251001": ModelCost(0.80, 4.00, 0.40),
+    # Anthropic — ModelCost(base input, output, cache hits & refreshes) $/1M
+    "claude-opus-4-7": ModelCost(5.00, 25.00, 0.50),
+    "claude-opus-4-6": ModelCost(5.00, 25.00, 0.50),
+    "claude-opus-4-5": ModelCost(5.00, 25.00, 0.50),
+    "claude-opus-4-1": ModelCost(15.00, 75.00, 1.50),
+    "claude-opus-4-20250514": ModelCost(15.00, 75.00, 1.50),  # Opus 4 (deprecated)
+    "claude-sonnet-4-6": ModelCost(3.00, 15.00, 0.30),
+    "claude-sonnet-4-5": ModelCost(3.00, 15.00, 0.30),
+    "claude-sonnet-4-20250514": ModelCost(3.00, 15.00, 0.30),  # Sonnet 4 (deprecated)
+    "claude-haiku-4-5-20251001": ModelCost(1.00, 5.00, 0.10),
+    "claude-haiku-3-5-20241022": ModelCost(0.80, 4.00, 0.08),  # Haiku 3.5 (retired)
+    # Legacy aliases (kept so historical usage rows still price correctly)
+    "claude-3-5-sonnet-20241022": ModelCost(3.00, 15.00, 0.30),
+    "claude-3-5-haiku-20241022": ModelCost(0.80, 4.00, 0.08),
     # Google
     "gemini-1.5-pro": ModelCost(1.25, 5.00),
     "gemini-1.5-flash": ModelCost(0.075, 0.30),

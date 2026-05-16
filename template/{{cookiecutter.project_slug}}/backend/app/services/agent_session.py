@@ -422,6 +422,7 @@ from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 from langchain.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
+from langchain_core.messages.ai import add_usage
 
 from app.agents.langchain_assistant import AgentContext, get_agent
 from app.services.agent import (
@@ -663,10 +664,15 @@ class AgentSession:
         final_output = ""
         seen_tool_call_ids: set[str] = set()
         pending: dict[str, dict[str, Any]] = {}
-        # Accumulate AIMessageChunks so we can read aggregate usage_metadata at the end.
-        # LangChain's `+` operator on AIMessageChunk merges usage_metadata across chunks.
+        # Sum usage_metadata across the turn's model calls. We add only the
+        # usage dicts (via add_usage), never whole chunks — merging full
+        # AIMessageChunks via `+` crashes on scalar additional_kwargs like the
+        # OpenAI Responses API's float ``created_at``.
         self._last_usage_metadata = None
-        accumulator: AIMessageChunk | None = None
+        # Per-turn flag: did we already stream reasoning from token chunks?
+        # If not, _stream_update_event falls back to the final message's
+        # reasoning so thinking is shown for providers that don't stream it.
+        self._thinking_streamed = False
 
         await send_event(self.websocket, "model_request_start", {})
 
@@ -678,34 +684,65 @@ class AgentSession:
             if stream_mode == "messages":
                 token, _metadata = data
                 if isinstance(token, AIMessageChunk):
-                    accumulator = token if accumulator is None else accumulator + token
-                    final_output += await self._stream_message_chunk(
-                        token, seen_tool_call_ids
-                    )
+                    if token.usage_metadata:
+                        self._last_usage_metadata = (
+                            token.usage_metadata
+                            if self._last_usage_metadata is None
+                            else add_usage(self._last_usage_metadata, token.usage_metadata)
+                        )
+                    final_output += await self._stream_message_chunk(token)
             elif stream_mode == "updates":
                 await self._stream_update_event(
                     data, seen_tool_call_ids, pending, collected_tool_calls
                 )
 
-        if accumulator is not None:
-            self._last_usage_metadata = getattr(accumulator, "usage_metadata", None)
         await send_event(self.websocket, "final_result", {"output": final_output})
         return final_output
 
-    async def _stream_message_chunk(
-        self,
-        token: AIMessageChunk,
-        seen_tool_call_ids: set[str],
-    ) -> str:
-        """Emit text + reasoning deltas + partial tool_call events from a streaming chunk.
+    @staticmethod
+    def _extract_reasoning(message: Any) -> str:
+        """Pull reasoning/thinking text from a LangChain message or chunk.
 
-        Detects three reasoning shapes:
-          * Anthropic extended thinking — content blocks ``{"type":"thinking","thinking":"..."}``
+        Covers three shapes:
+          * Anthropic extended thinking — ``{"type":"thinking","thinking":"..."}``
           * OpenAI Responses API — ``{"type":"reasoning","summary":[{"type":"summary_text","text":"..."}]}``
-          * Legacy LangChain providers — ``additional_kwargs.reasoning_content`` (string)
+          * Legacy providers — ``additional_kwargs.reasoning_content`` (string)
+        """
+        out = ""
+        content = getattr(message, "content", None)
+        if isinstance(content, list):
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                btype = block.get("type")
+                if btype == "thinking":
+                    out += block.get("thinking", "") or ""
+                elif btype == "reasoning":
+                    for summary in block.get("summary", []) or []:
+                        if (
+                            isinstance(summary, dict)
+                            and summary.get("type") == "summary_text"
+                        ):
+                            out += summary.get("text", "") or ""
+        legacy = (getattr(message, "additional_kwargs", None) or {}).get(
+            "reasoning_content"
+        )
+        if isinstance(legacy, str):
+            out += legacy
+        return out
+
+    async def _stream_message_chunk(self, token: AIMessageChunk) -> str:
+        """Emit text + reasoning deltas from a streaming chunk.
+
+        Tool calls are intentionally NOT emitted here. Streamed
+        ``tool_call_chunks`` carry only partial JSON-string argument
+        fragments, not a usable args dict — emitting from here produced
+        ``tool_call`` events with empty ``args`` (and, because they were
+        deduped against the same id set, suppressed the complete event).
+        The canonical tool call, with full args, is emitted from the
+        ``updates`` stream in ``_stream_update_event``.
         """
         text_content = ""
-        reasoning_content = ""
         if token.content:
             if isinstance(token.content, str):
                 text_content = token.content
@@ -713,41 +750,17 @@ class AgentSession:
                 for block in token.content:
                     if isinstance(block, str):
                         text_content += block
-                    elif isinstance(block, dict):
-                        block_type = block.get("type")
-                        if block_type == "text":
-                            text_content += block.get("text", "")
-                        elif block_type == "thinking":
-                            reasoning_content += block.get("thinking", "") or ""
-                        elif block_type == "reasoning":
-                            for summary in block.get("summary", []) or []:
-                                if (
-                                    isinstance(summary, dict)
-                                    and summary.get("type") == "summary_text"
-                                ):
-                                    reasoning_content += summary.get("text", "") or ""
+                    elif isinstance(block, dict) and block.get("type") == "text":
+                        text_content += block.get("text", "")
             if text_content:
                 await send_event(self.websocket, "text_delta", {"content": text_content})
-        # Legacy shape: some providers stash the chain-of-thought outside content.
-        legacy_reasoning = (token.additional_kwargs or {}).get("reasoning_content")
-        if isinstance(legacy_reasoning, str) and legacy_reasoning:
-            reasoning_content += legacy_reasoning
+
+        reasoning_content = self._extract_reasoning(token)
         if reasoning_content:
+            self._thinking_streamed = True
             await send_event(
                 self.websocket, "thinking_delta", {"content": reasoning_content}
             )
-
-        if token.tool_call_chunks:
-            for tc_chunk in token.tool_call_chunks:
-                tc_id = tc_chunk.get("id")
-                tc_name = tc_chunk.get("name")
-                if tc_id and tc_name and tc_id not in seen_tool_call_ids:
-                    seen_tool_call_ids.add(tc_id)
-                    await send_event(
-                        self.websocket,
-                        "tool_call",
-                        {"tool_name": tc_name, "args": {}, "tool_call_id": tc_id},
-                    )
         return text_content
 
     async def _stream_update_event(
@@ -757,7 +770,13 @@ class AgentSession:
         pending: dict[str, dict[str, Any]],
         collected_tool_calls: list[dict[str, Any]],
     ) -> None:
-        """Process ``updates`` stream events: tool execution results + canonical tool calls."""
+        """Process ``updates`` stream events — the source of truth for tools.
+
+        Tool calls here carry the complete name + parsed ``args`` from
+        ``AIMessage.tool_calls`` (unlike the partial streamed chunks). Also
+        emits a reasoning fallback for providers that attach the chain of
+        thought to the final message instead of streaming it.
+        """
         for node_name, update in update_data.items():
             if node_name == "tools":
                 for msg in update.get("messages", []):
@@ -772,21 +791,31 @@ class AgentSession:
                         )
             elif node_name == "model":
                 for msg in update.get("messages", []):
-                    if isinstance(msg, AIMessage) and msg.tool_calls:
-                        for tc_in in msg.tool_calls:
-                            tc_id = tc_in.get("id", "")
-                            if not tc_id:
-                                continue
-                            tc = {
-                                "tool_call_id": tc_id,
-                                "tool_name": tc_in.get("name", ""),
-                                "args": tc_in.get("args", {}),
-                            }
-                            pending[tc_id] = tc
-                            collected_tool_calls.append(tc)
-                            if tc_id not in seen_tool_call_ids:
-                                seen_tool_call_ids.add(tc_id)
-                                await send_event(self.websocket, "tool_call", tc)
+                    if not isinstance(msg, AIMessage):
+                        continue
+                    if not self._thinking_streamed:
+                        reasoning = self._extract_reasoning(msg)
+                        if reasoning:
+                            self._thinking_streamed = True
+                            await send_event(
+                                self.websocket,
+                                "thinking_delta",
+                                {"content": reasoning},
+                            )
+                    for tc_in in msg.tool_calls or []:
+                        tc_id = tc_in.get("id", "")
+                        if not tc_id:
+                            continue
+                        tc = {
+                            "tool_call_id": tc_id,
+                            "tool_name": tc_in.get("name", ""),
+                            "args": tc_in.get("args", {}),
+                        }
+                        pending[tc_id] = tc
+                        collected_tool_calls.append(tc)
+                        if tc_id not in seen_tool_call_ids:
+                            seen_tool_call_ids.add(tc_id)
+                            await send_event(self.websocket, "tool_call", tc)
 {%- elif cookiecutter.use_langgraph %}
 """Per-connection AI agent session (LangGraph)."""
 
@@ -795,6 +824,7 @@ from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
+from langchain_core.messages.ai import add_usage
 
 from app.agents.langgraph_assistant import AgentContext, get_agent
 from app.services.agent import (
@@ -1032,8 +1062,15 @@ class AgentSession:
         final_output = ""
         seen_tool_call_ids: set[str] = set()
         pending: dict[str, dict[str, Any]] = {}
+        # Sum usage_metadata across the turn's model calls. We add only the
+        # usage dicts (via add_usage), never whole chunks — merging full
+        # AIMessageChunks via `+` crashes on scalar additional_kwargs like the
+        # OpenAI Responses API's float ``created_at``.
         self._last_usage_metadata = None
-        accumulator: AIMessageChunk | None = None
+        # Per-turn flag: did we already stream reasoning from token chunks?
+        # If not, _stream_update_event falls back to the final message's
+        # reasoning so thinking is shown for providers that don't stream it.
+        self._thinking_streamed = False
 
         await send_event(self.websocket, "model_request_start", {})
 
@@ -1043,34 +1080,65 @@ class AgentSession:
             if stream_mode == "messages":
                 chunk, _metadata = data
                 if isinstance(chunk, AIMessageChunk):
-                    accumulator = chunk if accumulator is None else accumulator + chunk
-                    final_output += await self._stream_message_chunk(
-                        chunk, seen_tool_call_ids
-                    )
+                    if chunk.usage_metadata:
+                        self._last_usage_metadata = (
+                            chunk.usage_metadata
+                            if self._last_usage_metadata is None
+                            else add_usage(self._last_usage_metadata, chunk.usage_metadata)
+                        )
+                    final_output += await self._stream_message_chunk(chunk)
             elif stream_mode == "updates":
                 await self._stream_update_event(
                     data, seen_tool_call_ids, pending, collected_tool_calls
                 )
 
-        if accumulator is not None:
-            self._last_usage_metadata = getattr(accumulator, "usage_metadata", None)
         await send_event(self.websocket, "final_result", {"output": final_output})
         return final_output
 
-    async def _stream_message_chunk(
-        self,
-        chunk: AIMessageChunk,
-        seen_tool_call_ids: set[str],
-    ) -> str:
-        """Emit text + reasoning deltas + partial tool_call events from a streaming chunk.
+    @staticmethod
+    def _extract_reasoning(message: Any) -> str:
+        """Pull reasoning/thinking text from a LangChain message or chunk.
 
-        Detects three reasoning shapes:
-          * Anthropic extended thinking — content blocks ``{"type":"thinking","thinking":"..."}``
+        Covers three shapes:
+          * Anthropic extended thinking — ``{"type":"thinking","thinking":"..."}``
           * OpenAI Responses API — ``{"type":"reasoning","summary":[{"type":"summary_text","text":"..."}]}``
-          * Legacy LangChain providers — ``additional_kwargs.reasoning_content`` (string)
+          * Legacy providers — ``additional_kwargs.reasoning_content`` (string)
+        """
+        out = ""
+        content = getattr(message, "content", None)
+        if isinstance(content, list):
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                btype = block.get("type")
+                if btype == "thinking":
+                    out += block.get("thinking", "") or ""
+                elif btype == "reasoning":
+                    for summary in block.get("summary", []) or []:
+                        if (
+                            isinstance(summary, dict)
+                            and summary.get("type") == "summary_text"
+                        ):
+                            out += summary.get("text", "") or ""
+        legacy = (getattr(message, "additional_kwargs", None) or {}).get(
+            "reasoning_content"
+        )
+        if isinstance(legacy, str):
+            out += legacy
+        return out
+
+    async def _stream_message_chunk(self, chunk: AIMessageChunk) -> str:
+        """Emit text + reasoning deltas from a streaming chunk.
+
+        Tool calls are intentionally NOT emitted here. Streamed
+        ``tool_call_chunks`` carry only partial JSON-string argument
+        fragments, not a usable args dict — emitting from here produced
+        ``tool_call`` events with empty ``args`` (and, because they were
+        deduped against the same id set, suppressed the complete event).
+        The canonical tool call, with full args, is emitted from the
+        ``updates`` stream in ``_stream_update_event``.
         """
         text_content = ""
-        reasoning_content = ""
         if chunk.content:
             if isinstance(chunk.content, str):
                 text_content = chunk.content
@@ -1078,41 +1146,17 @@ class AgentSession:
                 for block in chunk.content:
                     if isinstance(block, str):
                         text_content += block
-                    elif isinstance(block, dict):
-                        block_type = block.get("type")
-                        if block_type == "text":
-                            text_content += block.get("text", "")
-                        elif block_type == "thinking":
-                            reasoning_content += block.get("thinking", "") or ""
-                        elif block_type == "reasoning":
-                            for summary in block.get("summary", []) or []:
-                                if (
-                                    isinstance(summary, dict)
-                                    and summary.get("type") == "summary_text"
-                                ):
-                                    reasoning_content += summary.get("text", "") or ""
+                    elif isinstance(block, dict) and block.get("type") == "text":
+                        text_content += block.get("text", "")
             if text_content:
                 await send_event(self.websocket, "text_delta", {"content": text_content})
-        # Legacy shape: some providers stash the chain-of-thought outside content.
-        legacy_reasoning = (chunk.additional_kwargs or {}).get("reasoning_content")
-        if isinstance(legacy_reasoning, str) and legacy_reasoning:
-            reasoning_content += legacy_reasoning
+
+        reasoning_content = self._extract_reasoning(chunk)
         if reasoning_content:
+            self._thinking_streamed = True
             await send_event(
                 self.websocket, "thinking_delta", {"content": reasoning_content}
             )
-
-        if chunk.tool_call_chunks:
-            for tc_chunk in chunk.tool_call_chunks:
-                tc_id = tc_chunk.get("id")
-                tc_name = tc_chunk.get("name")
-                if tc_id and tc_name and tc_id not in seen_tool_call_ids:
-                    seen_tool_call_ids.add(tc_id)
-                    await send_event(
-                        self.websocket,
-                        "tool_call",
-                        {"tool_name": tc_name, "args": {}, "tool_call_id": tc_id},
-                    )
         return text_content
 
     async def _stream_update_event(
@@ -1122,7 +1166,13 @@ class AgentSession:
         pending: dict[str, dict[str, Any]],
         collected_tool_calls: list[dict[str, Any]],
     ) -> None:
-        """Process LangGraph ``updates`` events: tool results + canonical tool calls."""
+        """Process LangGraph ``updates`` events — the source of truth for tools.
+
+        Tool calls here carry the complete name + parsed ``args`` from
+        ``AIMessage.tool_calls`` (unlike the partial streamed chunks). Also
+        emits a reasoning fallback for providers that attach the chain of
+        thought to the final message instead of streaming it.
+        """
         for node_name, update in update_data.items():
             if node_name == "tools":
                 for msg in update.get("messages", []):
@@ -1137,21 +1187,31 @@ class AgentSession:
                         )
             elif node_name == "agent":
                 for msg in update.get("messages", []):
-                    if isinstance(msg, AIMessage) and msg.tool_calls:
-                        for tc_in in msg.tool_calls:
-                            tc_id = tc_in.get("id", "")
-                            if not tc_id:
-                                continue
-                            tc = {
-                                "tool_call_id": tc_id,
-                                "tool_name": tc_in.get("name", ""),
-                                "args": tc_in.get("args", {}),
-                            }
-                            pending[tc_id] = tc
-                            collected_tool_calls.append(tc)
-                            if tc_id not in seen_tool_call_ids:
-                                seen_tool_call_ids.add(tc_id)
-                                await send_event(self.websocket, "tool_call", tc)
+                    if not isinstance(msg, AIMessage):
+                        continue
+                    if not self._thinking_streamed:
+                        reasoning = self._extract_reasoning(msg)
+                        if reasoning:
+                            self._thinking_streamed = True
+                            await send_event(
+                                self.websocket,
+                                "thinking_delta",
+                                {"content": reasoning},
+                            )
+                    for tc_in in msg.tool_calls or []:
+                        tc_id = tc_in.get("id", "")
+                        if not tc_id:
+                            continue
+                        tc = {
+                            "tool_call_id": tc_id,
+                            "tool_name": tc_in.get("name", ""),
+                            "args": tc_in.get("args", {}),
+                        }
+                        pending[tc_id] = tc
+                        collected_tool_calls.append(tc)
+                        if tc_id not in seen_tool_call_ids:
+                            seen_tool_call_ids.add(tc_id)
+                            await send_event(self.websocket, "tool_call", tc)
 {%- elif cookiecutter.use_crewai %}
 """Per-connection AI agent session (CrewAI Multi-Agent)."""
 
@@ -1487,6 +1547,7 @@ from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
+from langchain_core.messages.ai import add_usage
 
 from app.agents.deepagents_assistant import (
     AgentContext,
@@ -1635,6 +1696,8 @@ class AgentSession:
 
         # Reset usage tracking for the new turn (drive_stream accumulates across resumes).
         self._last_usage_metadata = None
+        # Per-turn flag for the reasoning fallback in _stream_update_event.
+        self._thinking_streamed = False
 
         # Re-instantiate the assistant if the client toggled thinking effort
         # between turns. The graph caches the model with thinking baked in, so
@@ -1842,12 +1905,13 @@ class AgentSession:
         seen_tool_call_ids: set[str] = set()
         pending: dict[str, dict[str, Any]] = {}
         pending_interrupt: InterruptData | None = None
-        # Track usage from accumulated AIMessageChunks. `_drive_stream` may be called
-        # multiple times across HITL resumes; we accumulate across all of them so the
-        # final debit reflects total usage of the turn.
+        # Sum usage_metadata across the turn's model calls (and across HITL
+        # resumes — `_drive_stream` runs multiple times per turn). We add only
+        # the usage dicts (via add_usage), never whole chunks: merging full
+        # AIMessageChunks via `+` crashes on scalar additional_kwargs like the
+        # OpenAI Responses API's float ``created_at``.
         if not hasattr(self, "_last_usage_metadata"):
             self._last_usage_metadata = None
-        accumulator: AIMessageChunk | None = None
 
         async for stream_mode, stream_data in stream_iter:
             if stream_mode == "interrupt":
@@ -1865,33 +1929,64 @@ class AgentSession:
             if stream_mode == "messages":
                 chunk, _metadata = stream_data
                 if isinstance(chunk, AIMessageChunk):
-                    accumulator = chunk if accumulator is None else accumulator + chunk
-                    final_output += await self._stream_message_chunk(
-                        chunk, seen_tool_call_ids
-                    )
+                    if chunk.usage_metadata:
+                        self._last_usage_metadata = (
+                            chunk.usage_metadata
+                            if self._last_usage_metadata is None
+                            else add_usage(self._last_usage_metadata, chunk.usage_metadata)
+                        )
+                    final_output += await self._stream_message_chunk(chunk)
             elif stream_mode == "updates":
                 await self._stream_update_event(
                     stream_data, seen_tool_call_ids, pending, collected_tool_calls
                 )
 
-        if accumulator is not None:
-            self._last_usage_metadata = getattr(accumulator, "usage_metadata", None)
         return final_output, pending_interrupt
 
-    async def _stream_message_chunk(
-        self,
-        chunk: AIMessageChunk,
-        seen_tool_call_ids: set[str],
-    ) -> str:
-        """Emit text + reasoning deltas + partial tool_call events from a streaming chunk.
+    @staticmethod
+    def _extract_reasoning(message: Any) -> str:
+        """Pull reasoning/thinking text from a LangChain message or chunk.
 
-        Detects three reasoning shapes:
-          * Anthropic extended thinking — content blocks ``{"type":"thinking","thinking":"..."}``
+        Covers three shapes:
+          * Anthropic extended thinking — ``{"type":"thinking","thinking":"..."}``
           * OpenAI Responses API — ``{"type":"reasoning","summary":[{"type":"summary_text","text":"..."}]}``
-          * Legacy LangChain providers — ``additional_kwargs.reasoning_content`` (string)
+          * Legacy providers — ``additional_kwargs.reasoning_content`` (string)
+        """
+        out = ""
+        content = getattr(message, "content", None)
+        if isinstance(content, list):
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                btype = block.get("type")
+                if btype == "thinking":
+                    out += block.get("thinking", "") or ""
+                elif btype == "reasoning":
+                    for summary in block.get("summary", []) or []:
+                        if (
+                            isinstance(summary, dict)
+                            and summary.get("type") == "summary_text"
+                        ):
+                            out += summary.get("text", "") or ""
+        legacy = (getattr(message, "additional_kwargs", None) or {}).get(
+            "reasoning_content"
+        )
+        if isinstance(legacy, str):
+            out += legacy
+        return out
+
+    async def _stream_message_chunk(self, chunk: AIMessageChunk) -> str:
+        """Emit text + reasoning deltas from a streaming chunk.
+
+        Tool calls are intentionally NOT emitted here. Streamed
+        ``tool_call_chunks`` carry only partial JSON-string argument
+        fragments, not a usable args dict — emitting from here produced
+        ``tool_call`` events with empty ``args`` (and, because they were
+        deduped against the same id set, suppressed the complete event).
+        The canonical tool call, with full args, is emitted from the
+        ``updates`` stream in ``_stream_update_event``.
         """
         text_content = ""
-        reasoning_content = ""
         if chunk.content:
             if isinstance(chunk.content, str):
                 text_content = chunk.content
@@ -1899,41 +1994,17 @@ class AgentSession:
                 for block in chunk.content:
                     if isinstance(block, str):
                         text_content += block
-                    elif isinstance(block, dict):
-                        block_type = block.get("type")
-                        if block_type == "text":
-                            text_content += block.get("text", "")
-                        elif block_type == "thinking":
-                            reasoning_content += block.get("thinking", "") or ""
-                        elif block_type == "reasoning":
-                            for summary in block.get("summary", []) or []:
-                                if (
-                                    isinstance(summary, dict)
-                                    and summary.get("type") == "summary_text"
-                                ):
-                                    reasoning_content += summary.get("text", "") or ""
+                    elif isinstance(block, dict) and block.get("type") == "text":
+                        text_content += block.get("text", "")
             if text_content:
                 await send_event(self.websocket, "text_delta", {"content": text_content})
-        # Legacy shape: some providers stash the chain-of-thought outside content.
-        legacy_reasoning = (chunk.additional_kwargs or {}).get("reasoning_content")
-        if isinstance(legacy_reasoning, str) and legacy_reasoning:
-            reasoning_content += legacy_reasoning
+
+        reasoning_content = self._extract_reasoning(chunk)
         if reasoning_content:
+            self._thinking_streamed = True
             await send_event(
                 self.websocket, "thinking_delta", {"content": reasoning_content}
             )
-
-        if chunk.tool_call_chunks:
-            for tc_chunk in chunk.tool_call_chunks:
-                tc_id = tc_chunk.get("id")
-                tc_name = tc_chunk.get("name")
-                if tc_id and tc_name and tc_id not in seen_tool_call_ids:
-                    seen_tool_call_ids.add(tc_id)
-                    await send_event(
-                        self.websocket,
-                        "tool_call",
-                        {"tool_name": tc_name, "args": {}, "tool_call_id": tc_id},
-                    )
         return text_content
 
     async def _stream_update_event(
@@ -1943,7 +2014,13 @@ class AgentSession:
         pending: dict[str, dict[str, Any]],
         collected_tool_calls: list[dict[str, Any]],
     ) -> None:
-        """Process LangGraph ``updates`` events: tool results + canonical tool calls."""
+        """Process LangGraph ``updates`` events — the source of truth for tools.
+
+        Tool calls here carry the complete name + parsed ``args`` from
+        ``AIMessage.tool_calls`` (unlike the partial streamed chunks). Also
+        emits a reasoning fallback for providers that attach the chain of
+        thought to the final message instead of streaming it.
+        """
         for node_name, update in update_data.items():
             if node_name == "tools":
                 for msg in update.get("messages", []):
@@ -1956,23 +2033,37 @@ class AgentSession:
                             "tool_result",
                             {"tool_call_id": msg.tool_call_id, "content": msg.content},
                         )
-            elif node_name == "agent":
+            # DeepAgents' create_deep_agent delegates to LangChain
+            # create_agent, whose model node is named "model" (not "agent"
+            # like the hand-built LangGraph graph). Middleware nodes
+            # (TodoListMiddleware.after_model, ...) are ignored.
+            elif node_name == "model":
                 for msg in update.get("messages", []):
-                    if isinstance(msg, AIMessage) and msg.tool_calls:
-                        for tc_in in msg.tool_calls:
-                            tc_id = tc_in.get("id", "")
-                            if not tc_id:
-                                continue
-                            tc = {
-                                "tool_call_id": tc_id,
-                                "tool_name": tc_in.get("name", ""),
-                                "args": tc_in.get("args", {}),
-                            }
-                            pending[tc_id] = tc
-                            collected_tool_calls.append(tc)
-                            if tc_id not in seen_tool_call_ids:
-                                seen_tool_call_ids.add(tc_id)
-                                await send_event(self.websocket, "tool_call", tc)
+                    if not isinstance(msg, AIMessage):
+                        continue
+                    if not self._thinking_streamed:
+                        reasoning = self._extract_reasoning(msg)
+                        if reasoning:
+                            self._thinking_streamed = True
+                            await send_event(
+                                self.websocket,
+                                "thinking_delta",
+                                {"content": reasoning},
+                            )
+                    for tc_in in msg.tool_calls or []:
+                        tc_id = tc_in.get("id", "")
+                        if not tc_id:
+                            continue
+                        tc = {
+                            "tool_call_id": tc_id,
+                            "tool_name": tc_in.get("name", ""),
+                            "args": tc_in.get("args", {}),
+                        }
+                        pending[tc_id] = tc
+                        collected_tool_calls.append(tc)
+                        if tc_id not in seen_tool_call_ids:
+                            seen_tool_call_ids.add(tc_id)
+                            await send_event(self.websocket, "tool_call", tc)
 
 {%- if cookiecutter.use_postgresql or cookiecutter.use_sqlite %}
 

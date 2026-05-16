@@ -141,11 +141,11 @@ Computed properties:
 |----------|---------|-------------|
 {%- if cookiecutter.use_openai %}
 | `OPENAI_API_KEY` | (empty) | OpenAI API key |
-| `AI_MODEL` | `gpt-4.1-mini` | Default LLM model for chat |
+| `AI_MODEL` | `gpt-5.5` | Default LLM model for chat |
 {%- endif %}
 {%- if cookiecutter.use_anthropic %}
 | `ANTHROPIC_API_KEY` | (empty) | Anthropic API key |
-| `AI_MODEL` | `claude-sonnet-4-6` | Default LLM model for chat |
+| `AI_MODEL` | `claude-opus-4-7` | Default LLM model for chat |
 {%- endif %}
 {%- if cookiecutter.use_google %}
 | `GOOGLE_API_KEY` | (empty) | Google AI API key |
@@ -153,7 +153,7 @@ Computed properties:
 {%- endif %}
 {%- if cookiecutter.use_openrouter %}
 | `OPENROUTER_API_KEY` | (empty) | OpenRouter API key |
-| `AI_MODEL` | `anthropic/claude-sonnet-4-6` | Default LLM model for chat |
+| `AI_MODEL` | `anthropic/claude-opus-4-7` | Default LLM model for chat |
 {%- endif %}
 | `AI_TEMPERATURE` | `0.7` | LLM temperature (0.0 = deterministic, 1.0 = creative) |
 | `AI_AVAILABLE_MODELS` | (auto-configured) | JSON list of models shown in the UI model selector |
@@ -165,7 +165,7 @@ Computed properties:
 Override `AI_AVAILABLE_MODELS` in `.env` to customize the model selector:
 
 ```bash
-AI_AVAILABLE_MODELS=["gpt-4.1-mini","gpt-4.1","claude-sonnet-4-6"]
+AI_AVAILABLE_MODELS=["gpt-5.5","gpt-5.4","claude-opus-4-7"]
 ```
 
 {%- if cookiecutter.enable_logfire %}

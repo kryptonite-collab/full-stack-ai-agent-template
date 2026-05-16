@@ -302,7 +302,7 @@ class Deps:
     db: AsyncSession | None = None
 
 agent = Agent[Deps, str](
-    model="openai:gpt-4o-mini",
+    model="openai:gpt-5.5",
     system_prompt="You are a helpful assistant.",
 )
 
@@ -328,7 +328,7 @@ def search_database(query: str) -> list[dict]:
     ...
 
 agent = create_react_agent(
-    model=ChatOpenAI(model="gpt-4o-mini"),
+    model=ChatOpenAI(model="gpt-5.5"),
     tools=[search_database],
     prompt="You are a helpful assistant.",
 )

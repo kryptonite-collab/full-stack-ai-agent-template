@@ -174,7 +174,7 @@ make dev-frontend  # start the Next.js container
 |---|---|---|
 | `make dev` | `docker-compose.dev.yml` | Local development with hot-reload + bind-mounted source. |
 | `make stage` | `docker-compose.yml` | Production-like build (no bind mounts) running on localhost. Sanity-check before deploy. |
-| `make prod` | `docker-compose.prod.yml` | Production. Requires `.env.prod` (copy from `.env.prod.example`) + external Nginx using `nginx/nginx.conf`. |
+| `make prod` | `docker-compose.prod.yml` | Production. Requires `backend/.env` (copy from `backend/.env.example`, fill real secrets) + external Nginx using `nginx/nginx.conf`. |
 
 Each env has matching `-down`, `-logs`, `-rebuild` siblings.
 
@@ -208,7 +208,7 @@ make run                                                    # uvicorn --reload
 git clone <your-repo>
 cd my_ai_app
 
-cp .env.prod.example .env.prod                  # fill in real secrets
+cp backend/.env.example backend/.env            # fill in real secrets
 # Configure your nginx host using nginx/nginx.conf as reference
 
 make prod                                       # builds + starts + migrates
@@ -251,10 +251,16 @@ Use `make help` to see all available Makefile shortcuts.
   <img src="https://raw.githubusercontent.com/vstorm-co/full-stack-ai-agent-template/main/assets/app_start.gif" alt="FastAPI Fullstack Generator Demo">
 </p>
 
-**Live chat:**
+**Live chat — web search:**
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/vstorm-co/full-stack-ai-agent-template/main/assets/new/chat_demo_light.gif" alt="Chat Demo">
+  <img src="https://raw.githubusercontent.com/vstorm-co/full-stack-ai-agent-template/main/assets/chat/websearchdemo.gif" alt="Agent answering with live web search">
+</p>
+
+**Live chat — chart generation:**
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/vstorm-co/full-stack-ai-agent-template/main/assets/chat/chartdemo.gif" alt="Agent generating an interactive chart">
 </p>
 
 **File upload & RAG ingestion:**

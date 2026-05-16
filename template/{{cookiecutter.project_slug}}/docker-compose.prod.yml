@@ -13,13 +13,14 @@
 {%- endif %}
 #
 # Usage:
-#   1. Copy .env.prod.example to .env.prod and fill in values:
-#      cp .env.prod.example .env.prod
-#   2. Run: docker-compose -f docker-compose.prod.yml up -d
+#   1. Fill backend/.env with real production secrets (cp backend/.env.example
+#      backend/.env if it doesn't exist yet). The same file is used for dev and
+#      prod — there is no separate .env.prod.
+#   2. Run: make prod   (or: docker compose --env-file backend/.env -f docker-compose.prod.yml up -d)
 {%- if cookiecutter.include_traefik_service %}
 #
 # Prerequisites:
-#   1. Configure .env.prod with DOMAIN and ACME_EMAIL
+#   1. Configure backend/.env with DOMAIN and ACME_EMAIL
 #   2. Ensure ports 80 and 443 are available
 #   3. Generate passwords: openssl rand -base64 32
 {%- elif cookiecutter.include_traefik_labels %}
@@ -27,20 +28,20 @@
 # Prerequisites:
 #   1. Create external traefik-public network: docker network create traefik-public
 #   2. Run your Traefik instance connected to traefik-public network
-#   3. Configure .env.prod with DOMAIN
+#   3. Configure backend/.env with DOMAIN
 {%- elif cookiecutter.include_nginx_service %}
 #
 # Prerequisites:
 #   1. Place SSL certificates in nginx/ssl/ directory:
 #      - nginx/ssl/cert.pem (certificate)
 #      - nginx/ssl/key.pem (private key)
-#   2. Configure .env.prod with DOMAIN
+#   2. Configure backend/.env with DOMAIN
 #   3. Ensure ports 80 and 443 are available
 {%- elif cookiecutter.include_nginx_config %}
 #
 # Prerequisites:
 #   1. Configure your external Nginx using nginx/nginx.conf as reference
-#   2. Configure .env.prod with DOMAIN
+#   2. Configure backend/.env with DOMAIN
 {%- endif %}
 
 services:
@@ -148,7 +149,6 @@ services:
       - ./emails:/app/emails:ro
 {%- endif %}
     env_file:
-      - .env.prod
       - ./backend/.env
     environment:
       - DEBUG=false
@@ -397,7 +397,6 @@ services:
 {%- endif %}
     command: celery -A app.worker.celery_app worker --loglevel=warning --concurrency=4
     env_file:
-      - .env.prod
       - ./backend/.env
     environment:
       - DEBUG=false
@@ -445,7 +444,6 @@ services:
     container_name: {{ cookiecutter.project_slug }}_celery_beat
     command: celery -A app.worker.celery_app beat --loglevel=warning
     env_file:
-      - .env.prod
       - ./backend/.env
     environment:
       - DEBUG=false
@@ -481,7 +479,6 @@ services:
     container_name: {{ cookiecutter.project_slug }}_flower
     command: celery -A app.worker.celery_app flower --port=5555
     env_file:
-      - .env.prod
       - ./backend/.env
     environment:
       - DEBUG=false
@@ -541,7 +538,6 @@ services:
 {%- endif %}
     command: taskiq worker app.worker.taskiq_app:broker --workers 4
     env_file:
-      - .env.prod
       - ./backend/.env
     environment:
       - DEBUG=false
@@ -592,7 +588,6 @@ services:
     container_name: {{ cookiecutter.project_slug }}_taskiq_scheduler
     command: taskiq scheduler app.worker.taskiq_app:scheduler
     env_file:
-      - .env.prod
       - ./backend/.env
     environment:
       - DEBUG=false
@@ -639,7 +634,6 @@ services:
 {%- endif %}
     command: arq app.worker.arq_app.WorkerSettings
     env_file:
-      - .env.prod
       - ./backend/.env
     environment:
       - DEBUG=false

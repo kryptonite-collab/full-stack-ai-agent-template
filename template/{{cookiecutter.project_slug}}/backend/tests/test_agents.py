@@ -1,9 +1,10 @@
 {%- if cookiecutter.use_pydantic_ai %}
 """Tests for AI agent module (PydanticAI)."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
+from pydantic_ai.models.test import TestModel
 
 from app.agents.assistant import AssistantAgent, Deps, get_agent, run_agent
 from app.agents.prompts import DEFAULT_SYSTEM_PROMPT
@@ -67,26 +68,27 @@ class TestAssistantAgent:
         assert agent.temperature == 0.5
         assert agent.system_prompt == "Custom prompt"
 
-    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
-    @patch("app.agents.assistant.OpenAIProvider")
-    @patch("app.agents.assistant.OpenAIResponsesModel")
-    def test_agent_property_creates_agent(self, mock_model, mock_provider):
+    # ``_build_model`` is the single per-provider model factory in
+    # assistant.py, so patching it keeps these tests provider-agnostic
+    # (openai/anthropic/google/openrouter/all) and avoids needing real API keys.
+    @patch("app.agents.assistant._build_model")
+    def test_agent_property_creates_agent(self, mock_build_model):
         """Test agent property creates agent on first access."""
+        mock_build_model.return_value = TestModel()
         agent = AssistantAgent()
         _ = agent.agent
         assert agent._agent is not None
-        mock_model.assert_called_once()
+        mock_build_model.assert_called_once()
 
-    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
-    @patch("app.agents.assistant.OpenAIProvider")
-    @patch("app.agents.assistant.OpenAIResponsesModel")
-    def test_agent_property_caches_agent(self, mock_model, mock_provider):
+    @patch("app.agents.assistant._build_model")
+    def test_agent_property_caches_agent(self, mock_build_model):
         """Test agent property caches the agent instance."""
+        mock_build_model.return_value = TestModel()
         agent = AssistantAgent()
         agent1 = agent.agent
         agent2 = agent.agent
         assert agent1 is agent2
-        mock_model.assert_called_once()
+        mock_build_model.assert_called_once()
 
 
 class TestGetAgent:
@@ -137,6 +139,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.agents.langchain_assistant import AgentContext, LangChainAssistant, get_agent, run_agent
+from app.agents.prompts import DEFAULT_SYSTEM_PROMPT
+{%- if cookiecutter.enable_rag %}
+from app.agents.prompts import get_system_prompt_with_rag
+{%- endif %}
 from app.agents.tools.datetime_tool import get_current_datetime
 
 
@@ -178,7 +184,11 @@ class TestLangChainAssistant:
     def test_init_with_defaults(self):
         """Test LangChainAssistant initializes with defaults."""
         agent = LangChainAssistant()
-        assert agent.system_prompt == "You are a helpful assistant."
+{%- if cookiecutter.enable_rag %}
+        assert agent.system_prompt == get_system_prompt_with_rag()
+{%- else %}
+        assert agent.system_prompt == DEFAULT_SYSTEM_PROMPT
+{%- endif %}
         assert agent._agent is None
 
     def test_init_with_custom_values(self):
@@ -192,7 +202,15 @@ class TestLangChainAssistant:
         assert agent.temperature == 0.5
         assert agent.system_prompt == "Custom prompt"
 
+    # Patch the provider-correct chat class so the test stays valid for
+    # whichever LLM provider the project was generated with.
+{%- if cookiecutter.use_anthropic %}
+    @patch("app.agents.langchain_assistant.ChatAnthropic")
+{%- elif cookiecutter.use_google %}
+    @patch("app.agents.langchain_assistant.ChatGoogleGenerativeAI")
+{%- else %}
     @patch("app.agents.langchain_assistant.ChatOpenAI")
+{%- endif %}
     @patch("app.agents.langchain_assistant.create_agent")
     def test_agent_property_creates_agent(self, mock_create_agent, mock_chat):
         """Test agent property creates agent on first access."""
@@ -202,7 +220,15 @@ class TestLangChainAssistant:
         assert agent._agent is not None
         mock_create_agent.assert_called_once()
 
+    # Patch the provider-correct chat class so the test stays valid for
+    # whichever LLM provider the project was generated with.
+{%- if cookiecutter.use_anthropic %}
+    @patch("app.agents.langchain_assistant.ChatAnthropic")
+{%- elif cookiecutter.use_google %}
+    @patch("app.agents.langchain_assistant.ChatGoogleGenerativeAI")
+{%- else %}
     @patch("app.agents.langchain_assistant.ChatOpenAI")
+{%- endif %}
     @patch("app.agents.langchain_assistant.create_agent")
     def test_agent_property_caches_agent(self, mock_create_agent, mock_chat):
         """Test agent property caches the agent instance."""
