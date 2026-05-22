@@ -159,3 +159,8 @@ exclude_lines = [
 [tool.fastapi-fullstack]
 generator_version = "0.2.9"
 generated_at = "2026-05-18T11:49:59.308088+00:00"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]

@@ -72,3 +72,89 @@ class RAGMessageResponse(BaseModel):
     """Simple message response."""
 
     message: str
+
+# Compatibility schemas for tracked RAG documents.
+# These models are used by app/services/rag_document.py.
+
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+
+class RAGTrackedDocumentItem(BaseModel):
+    id: int
+    collection_name: str
+    filename: str | None = None
+    original_filename: str | None = None
+    file_path: str | None = None
+    file_size: int | None = None
+    mime_type: str | None = None
+    status: str | None = None
+    chunk_count: int | None = 0
+    has_file: bool | None = None
+    metadata: dict[str, Any] | None = Field(default=None)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class RAGTrackedDocumentList(BaseModel):
+    items: list[RAGTrackedDocumentItem]
+    total: int
+
+# Compatibility schemas for RAG sync / ingest APIs.
+# These are minimal models to fix generated-template import errors first.
+
+from pydantic import ConfigDict
+
+
+class _RAGCompatBaseModel(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class RAGSyncLogItem(_RAGCompatBaseModel):
+    id: int | str | None = None
+    document_id: int | str | None = None
+    collection_name: str | None = None
+    filename: str | None = None
+    action: str | None = None
+    status: str | None = None
+    message: str | None = None
+    error: str | None = None
+    chunk_count: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class RAGSyncLogList(_RAGCompatBaseModel):
+    items: list[RAGSyncLogItem] = Field(default_factory=list)
+    total: int = 0
+
+
+class RAGSyncRequest(_RAGCompatBaseModel):
+    collection_name: str | None = None
+    document_ids: list[int] | None = None
+    force: bool = False
+
+
+class RAGSyncResponse(_RAGCompatBaseModel):
+    status: str = "ok"
+    message: str | None = None
+    synced: int = 0
+    failed: int = 0
+    logs: list[RAGSyncLogItem] = Field(default_factory=list)
+
+
+class RAGIngestResponse(_RAGCompatBaseModel):
+    status: str = "ok"
+    message: str | None = None
+    document_id: int | str | None = None
+    collection_name: str | None = None
+    chunks: int | None = None
+
+
+class RAGRetryResponse(_RAGCompatBaseModel):
+    status: str = "ok"
+    message: str | None = None
+    retried: int = 0
+    failed: int = 0
