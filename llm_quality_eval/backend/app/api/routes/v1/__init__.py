@@ -4,6 +4,7 @@
 from fastapi import APIRouter
 
 from app.api.routes.v1 import health
+from app.api.routes.v1 import eval
 from app.api.routes.v1 import admin_ratings, admin_users, auth, users
 from app.api.routes.v1 import conversations
 from app.api.routes.v1 import admin_conversations
@@ -17,6 +18,7 @@ v1_router = APIRouter()
 
 # Health check routes (no auth required)
 v1_router.include_router(health.router, tags=["health"])
+v1_router.include_router(eval.router)
 
 # Authentication routes
 v1_router.include_router(auth.router, prefix="/auth", tags=["auth"])
