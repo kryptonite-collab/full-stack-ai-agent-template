@@ -1,0 +1,127 @@
+{
+  "total": 5,
+  "passed": 5,
+  "failed": 0,
+  "pass_rate": 1.0,
+  "avg_latency_ms": 0.0,
+  "badcases": [],
+  "results": [
+    {
+      "id": "q001",
+      "question": "test refund policy",
+      "category": "rag_fact",
+      "answer": "Mock answer for question: test refund policy",
+      "contexts": [
+        {
+          "source": "mock_policy.md",
+          "content": "This is a mock RAG context for local MVP testing.",
+          "score": 1.0
+        }
+      ],
+      "model": "mock-llm-local",
+      "pass": true,
+      "keyword_score": 1.0,
+      "matched_keywords": [
+        "refund",
+        "policy"
+      ],
+      "missing_keywords": [],
+      "source_hit": true,
+      "latency_ms": 0.0,
+      "reason": "passed"
+    },
+    {
+      "id": "q002",
+      "question": "test rag mode",
+      "category": "rag_fact",
+      "answer": "Mock answer for question: test rag mode",
+      "contexts": [
+        {
+          "source": "mock_policy.md",
+          "content": "This is a mock RAG context for local MVP testing.",
+          "score": 1.0
+        }
+      ],
+      "model": "mock-llm-local",
+      "pass": true,
+      "keyword_score": 1.0,
+      "matched_keywords": [
+        "Mock answer",
+        "test rag mode"
+      ],
+      "missing_keywords": [],
+      "source_hit": true,
+      "latency_ms": 0.0,
+      "reason": "passed"
+    },
+    {
+      "id": "q003",
+      "question": "test empty context",
+      "category": "basic_qa",
+      "answer": "Mock answer for question: test empty context",
+      "contexts": [
+        {
+          "source": "mock_policy.md",
+          "content": "This is a mock RAG context for local MVP testing.",
+          "score": 1.0
+        }
+      ],
+      "model": "mock-llm-local",
+      "pass": true,
+      "keyword_score": 1.0,
+      "matched_keywords": [
+        "Mock answer"
+      ],
+      "missing_keywords": [],
+      "source_hit": true,
+      "latency_ms": 0.0,
+      "reason": "passed"
+    },
+    {
+      "id": "q004",
+      "question": "test latency field",
+      "category": "api_contract",
+      "answer": "Mock answer for question: test latency field",
+      "contexts": [
+        {
+          "source": "mock_policy.md",
+          "content": "This is a mock RAG context for local MVP testing.",
+          "score": 1.0
+        }
+      ],
+      "model": "mock-llm-local",
+      "pass": true,
+      "keyword_score": 1.0,
+      "matched_keywords": [
+        "test latency field"
+      ],
+      "missing_keywords": [],
+      "source_hit": true,
+      "latency_ms": 0.0,
+      "reason": "passed"
+    },
+    {
+      "id": "q005",
+      "question": "test model field",
+      "category": "api_contract",
+      "answer": "Mock answer for question: test model field",
+      "contexts": [
+        {
+          "source": "mock_policy.md",
+          "content": "This is a mock RAG context for local MVP testing.",
+          "score": 1.0
+        }
+      ],
+      "model": "mock-llm-local",
+      "pass": true,
+      "keyword_score": 1.0,
+      "matched_keywords": [
+        "Mock answer"
+      ],
+      "missing_keywords": [],
+      "source_hit": true,
+      "latency_ms": 0.0,
+      "reason": "passed"
+    }
+  ]
+}
