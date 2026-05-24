@@ -1,10 +1,11 @@
-"""API v1 router aggregation."""
+﻿"""API v1 router aggregation."""
 # ruff: noqa: I001 - Imports structured for Jinja2 template conditionals
 
 from fastapi import APIRouter
 
 from app.api.routes.v1 import health
 from app.api.routes.v1 import eval
+from app.api.routes.v1 import badcases
 from app.api.routes.v1 import admin_ratings, admin_users, auth, users
 from app.api.routes.v1 import conversations
 from app.api.routes.v1 import admin_conversations
@@ -19,6 +20,7 @@ v1_router = APIRouter()
 # Health check routes (no auth required)
 v1_router.include_router(health.router, tags=["health"])
 v1_router.include_router(eval.router)
+v1_router.include_router(badcases.router)
 
 # Authentication routes
 v1_router.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -53,3 +55,4 @@ v1_router.include_router(
     me_slash_commands.router, prefix="/me/slash-commands", tags=["me:slash-commands"]
 )
 v1_router.include_router(admin_stats.router, prefix="/admin", tags=["admin:stats"])
+
