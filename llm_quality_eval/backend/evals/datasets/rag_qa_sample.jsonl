@@ -1,0 +1,5 @@
+{"id":"q001","question":"test refund policy","expected_keywords":["refund","policy"],"expected_source":"mock_policy.md","category":"rag_fact"}
+{"id":"q002","question":"test rag mode","expected_keywords":["Mock answer","test rag mode"],"expected_source":"mock_policy.md","category":"rag_fact"}
+{"id":"q003","question":"test empty context","expected_keywords":["Mock answer"],"expected_source":"mock_policy.md","category":"basic_qa"}
+{"id":"q004","question":"test latency field","expected_keywords":["test latency field"],"expected_source":"mock_policy.md","category":"api_contract"}
+{"id":"q005","question":"test model field","expected_keywords":["Mock answer"],"expected_source":"mock_policy.md","category":"api_contract"}
