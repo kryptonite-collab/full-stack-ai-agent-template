@@ -10,6 +10,7 @@ from app.api.routes.v1 import admin_ratings, admin_users, auth, users
 from app.api.routes.v1 import conversations
 from app.api.routes.v1 import admin_conversations
 from app.api.routes.v1 import agent
+from app.api.routes.v1 import agent_eval
 from app.api.routes.v1 import rag
 from app.api.routes.v1 import files
 from app.api.routes.v1 import me_slash_commands
@@ -37,6 +38,7 @@ v1_router.include_router(conversations.router, prefix="/conversations", tags=["c
 
 # AI Agent routes
 v1_router.include_router(agent.router, tags=["agent"])
+v1_router.include_router(agent_eval.router)
 
 # RAG routes
 v1_router.include_router(rag.router, prefix="/rag", tags=["rag"])
