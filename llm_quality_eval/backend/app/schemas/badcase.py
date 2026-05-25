@@ -5,11 +5,17 @@ from pydantic import BaseModel, Field
 
 class BadcaseItem(BaseModel):
     id: str | None = None
+    question_id: str | None = None
     question: str
     category: str | None = None
-    reason: str
+    answer: str | None = None
+    expected_keywords: list[str] = Field(default_factory=list)
     missing_keywords: list[str] = Field(default_factory=list)
     expected_source: str | None = None
+    retrieved_sources: list[str] = Field(default_factory=list)
+    score: float | None = None
+    reason: str
+    created_at: str | None = None
 
 
 class BadcaseListResponse(BaseModel):
