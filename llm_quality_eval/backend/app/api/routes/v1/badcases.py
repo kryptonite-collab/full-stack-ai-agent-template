@@ -1,6 +1,7 @@
 ﻿from fastapi import APIRouter, HTTPException
 
 from app.schemas.badcase import (
+    BadcaseExportResponse,
     BadcaseItem,
     BadcaseListResponse,
     BadcaseReplayResponse,
@@ -41,3 +42,11 @@ async def replay_badcase(badcase_id: str) -> BadcaseReplayResponse:
         raise HTTPException(status_code=404, detail="Badcase not found")
 
     return BadcaseReplayResponse(**result)
+
+
+@router.post("/export", response_model=BadcaseExportResponse)
+async def export_badcases() -> BadcaseExportResponse:
+    service = BadcaseService()
+    result = service.export_badcases()
+
+    return BadcaseExportResponse(**result)
