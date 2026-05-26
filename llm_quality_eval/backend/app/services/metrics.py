@@ -59,6 +59,33 @@ def check_source_hit(
     return False
 
 
+def check_source_hit_at_k(
+    contexts: list[dict[str, Any]],
+    expected_source: str | None,
+) -> bool:
+    """Check source hit using the retrieved top-k contexts."""
+    return check_source_hit(
+        contexts=contexts,
+        expected_source=expected_source,
+    )
+
+
+def _collect_failed_metrics(
+    keyword_score: float,
+    source_hit_at_k: bool,
+    min_keyword_score: float,
+) -> list[str]:
+    failed_metrics: list[str] = []
+
+    if keyword_score < min_keyword_score:
+        failed_metrics.append("answer_keyword_recall")
+
+    if not source_hit_at_k:
+        failed_metrics.append("source_hit_at_k")
+
+    return failed_metrics
+
+
 def evaluate_qa_result(
     answer: str,
     contexts: list[dict[str, Any]],
@@ -77,10 +104,19 @@ def evaluate_qa_result(
         contexts=contexts,
         expected_source=expected_source,
     )
+    source_hit_at_k = check_source_hit_at_k(
+        contexts=contexts,
+        expected_source=expected_source,
+    )
 
     passed = (
         keyword_result["keyword_score"] >= min_keyword_score
-        and source_hit
+        and source_hit_at_k
+    )
+    failed_metrics = _collect_failed_metrics(
+        keyword_score=keyword_result["keyword_score"],
+        source_hit_at_k=source_hit_at_k,
+        min_keyword_score=min_keyword_score,
     )
 
     reasons: list[str] = []
@@ -100,9 +136,12 @@ def evaluate_qa_result(
     return {
         "pass": passed,
         "keyword_score": keyword_result["keyword_score"],
+        "answer_keyword_recall": keyword_result["keyword_score"],
         "matched_keywords": keyword_result["matched_keywords"],
         "missing_keywords": keyword_result["missing_keywords"],
         "source_hit": source_hit,
+        "source_hit_at_k": source_hit_at_k,
         "latency_ms": latency_ms,
+        "failed_metrics": failed_metrics,
         "reason": "; ".join(reasons),
     }

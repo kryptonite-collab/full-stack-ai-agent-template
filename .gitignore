@@ -220,3 +220,4 @@ website/.astro/
 
 # Custom
 .playground/
+llm_quality_eval/backend/.tmp_pytest/

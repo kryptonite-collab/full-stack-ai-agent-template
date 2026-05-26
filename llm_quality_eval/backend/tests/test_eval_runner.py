@@ -39,7 +39,10 @@ def test_run_eval_dataset_writes_report(tmp_path):
     assert report["passed"] == 1
     assert report["failed"] == 1
     assert report["pass_rate"] == 0.5
+    assert report["source_hit_rate"] == 1.0
     assert report["badcase_count"] == 1
+    assert report["badcase_type_distribution"] == {"keyword_miss": 1}
+    assert len(report["top_failed_cases"]) == 1
     assert len(report["badcases"]) == 1
 
     badcase = report["badcases"][0]
@@ -52,6 +55,10 @@ def test_run_eval_dataset_writes_report(tmp_path):
     assert badcase["expected_source"] == "mock_policy.md"
     assert badcase["retrieved_sources"] == ["mock_policy.md"]
     assert badcase["score"] == 0.0
+    assert badcase["answer_keyword_recall"] == 0.0
+    assert badcase["source_hit_at_k"] is True
+    assert badcase["badcase_type"] == "keyword_miss"
+    assert badcase["failed_metrics"] == ["answer_keyword_recall"]
     assert "missing keywords: impossible_keyword" in badcase["reason"]
     assert badcase["created_at"]
 
@@ -60,7 +67,10 @@ def test_run_eval_dataset_writes_report(tmp_path):
     saved_report = json.loads(report_path.read_text(encoding="utf-8"))
     assert saved_report["total"] == 2
     assert saved_report["failed"] == 1
+    assert saved_report["source_hit_rate"] == 1.0
     assert saved_report["badcase_count"] == 1
+    assert saved_report["badcase_type_distribution"] == {"keyword_miss": 1}
+    assert saved_report["top_failed_cases"][0]["question_id"] == "q002"
     assert saved_report["badcases"][0]["question_id"] == "q002"
 
 
@@ -89,4 +99,34 @@ def test_run_eval_dataset_uses_config_file(tmp_path):
     assert report["passed"] == 1
     assert report["config"]["use_rag"] is True
     assert report["config"]["top_k"] == 3
+    assert report_path.exists()
+
+
+def test_run_eval_dataset_reports_multiple_badcase_types(tmp_path):
+    dataset_path = tmp_path / "sample.jsonl"
+    report_path = tmp_path / "latest_report.json"
+
+    dataset_path.write_text(
+        '{"id":"q001","question":"test pass","expected_keywords":["test pass"],"expected_source":"mock_policy.md","category":"facts_qa","expected_behavior":"answer","badcase_type":null}\n'
+        '{"id":"q002","question":"test keyword miss","expected_keywords":["impossible_keyword"],"expected_source":"mock_policy.md","category":"keyword_miss","expected_behavior":"answer","badcase_type":"keyword_miss"}\n'
+        '{"id":"q003","question":"test refusal","expected_keywords":["cannot assist"],"expected_source":null,"category":"refusal","expected_behavior":"refuse","badcase_type":"refusal_expected"}\n',
+        encoding="utf-8",
+    )
+
+    report = run_eval_dataset(
+        dataset_path=dataset_path,
+        report_path=report_path,
+        use_rag=True,
+        top_k=3,
+    )
+
+    assert report["total"] == 3
+    assert report["source_hit_rate"] == 1.0
+    assert report["badcase_type_distribution"] == {
+        "keyword_miss": 1,
+        "refusal_expected": 1,
+    }
+    assert len(report["top_failed_cases"]) == 2
+    assert report["top_failed_cases"][0]["failed_metrics"]
+    assert all("failed_metrics" in badcase for badcase in report["badcases"])
     assert report_path.exists()

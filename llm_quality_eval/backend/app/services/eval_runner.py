@@ -1,4 +1,5 @@
-﻿import json
+import json
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -98,6 +99,67 @@ def _extract_retrieved_sources(contexts: list[dict[str, Any]]) -> list[str]:
     return sources
 
 
+def _infer_badcase_type(sample: dict[str, Any], eval_result: dict[str, Any]) -> str | None:
+    sample_badcase_type = sample.get("badcase_type")
+
+    if sample_badcase_type:
+        return str(sample_badcase_type)
+
+    if eval_result["pass"]:
+        return None
+
+    failed_metrics = eval_result["failed_metrics"]
+
+    if failed_metrics == ["source_hit_at_k"]:
+        return "source_miss"
+
+    if failed_metrics == ["answer_keyword_recall"]:
+        return "keyword_miss"
+
+    if len(failed_metrics) > 1:
+        return "multiple_metrics_failed"
+
+    return "unknown"
+
+
+def _build_badcase_type_distribution(
+    badcases: list[dict[str, Any]],
+) -> dict[str, int]:
+    counter = Counter(
+        str(badcase.get("badcase_type") or "unknown")
+        for badcase in badcases
+    )
+
+    return dict(sorted(counter.items()))
+
+
+def _build_top_failed_cases(
+    badcases: list[dict[str, Any]],
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    sorted_badcases = sorted(
+        badcases,
+        key=lambda item: (
+            float(item.get("score", 0.0)),
+            str(item.get("id") or ""),
+        ),
+    )
+
+    return [
+        {
+            "id": item.get("id"),
+            "question_id": item.get("question_id"),
+            "question": item.get("question"),
+            "category": item.get("category"),
+            "badcase_type": item.get("badcase_type"),
+            "score": item.get("score"),
+            "failed_metrics": item.get("failed_metrics", []),
+            "reason": item.get("reason"),
+        }
+        for item in sorted_badcases[:limit]
+    ]
+
+
 def run_eval_dataset(
     dataset_path: str | Path | None = None,
     report_path: str | Path | None = None,
@@ -146,6 +208,7 @@ def run_eval_dataset(
             latency_ms=qa_result["latency_ms"],
             min_keyword_score=actual_min_keyword_score,
         )
+        badcase_type = _infer_badcase_type(sample, eval_result)
 
         total_latency += float(qa_result["latency_ms"])
 
@@ -154,6 +217,8 @@ def run_eval_dataset(
             "question_id": sample.get("id"),
             "question": sample["question"],
             "category": sample.get("category"),
+            "expected_behavior": sample.get("expected_behavior"),
+            "badcase_type": badcase_type,
             "answer": qa_result["answer"],
             "expected_keywords": expected_keywords,
             "matched_keywords": eval_result["matched_keywords"],
@@ -175,12 +240,17 @@ def run_eval_dataset(
                     "question_id": sample.get("id"),
                     "question": sample["question"],
                     "category": sample.get("category"),
+                    "expected_behavior": sample.get("expected_behavior"),
+                    "badcase_type": badcase_type,
                     "answer": qa_result["answer"],
                     "expected_keywords": expected_keywords,
                     "missing_keywords": eval_result["missing_keywords"],
                     "expected_source": expected_source,
                     "retrieved_sources": retrieved_sources,
                     "score": eval_result["keyword_score"],
+                    "answer_keyword_recall": eval_result["answer_keyword_recall"],
+                    "source_hit_at_k": eval_result["source_hit_at_k"],
+                    "failed_metrics": eval_result["failed_metrics"],
                     "reason": eval_result["reason"],
                     "created_at": datetime.now(UTC).isoformat(),
                 }
@@ -192,13 +262,35 @@ def run_eval_dataset(
     pass_rate = passed / total if total else 0.0
     avg_latency_ms = total_latency / total if total else 0.0
 
+    source_expected_results = [
+        item
+        for item in results
+        if item.get("expected_source")
+    ]
+    source_hit_count = sum(
+        1
+        for item in source_expected_results
+        if item["source_hit_at_k"]
+    )
+    source_hit_rate = (
+        source_hit_count / len(source_expected_results)
+        if source_expected_results
+        else 0.0
+    )
+
+    badcase_type_distribution = _build_badcase_type_distribution(badcases)
+    top_failed_cases = _build_top_failed_cases(badcases)
+
     report = {
         "total": total,
         "passed": passed,
         "failed": failed,
         "pass_rate": round(pass_rate, 4),
         "avg_latency_ms": round(avg_latency_ms, 2),
+        "source_hit_rate": round(source_hit_rate, 4),
         "badcase_count": len(badcases),
+        "badcase_type_distribution": badcase_type_distribution,
+        "top_failed_cases": top_failed_cases,
         "badcases": badcases,
         "results": results,
         "config": {
