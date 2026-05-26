@@ -1,236 +1,464 @@
-# llm_quality_eval
+# LLM Quality Eval MVP
 
-A FastAPI project
+中文说明：[README.zh-CN.md](README.zh-CN.md)
 
-> Generated with [Full-Stack AI Agent Template](https://github.com/vstorm-co/full-stack-ai-agent-template).
+A FastAPI-based quality evaluation and badcase analysis MVP for LLM, RAG, and Agent applications.
 
----
+This project is designed for testing development, LLM quality assurance, and Agent-oriented intelligent testing interviews. It focuses on a reproducible local evaluation loop instead of real model calls.
 
-## Stack
+## Why This Project Exists
 
-| Component | Technology |
-|-----------|-----------|
-| **Backend** | FastAPI + Pydantic v2 |
-| **Database** | SQLite |
-| **Auth** | JWT + refresh tokens + API keys |
-| **AI Framework** | pydantic_ai (openai) |
-| **RAG** | chromadb vector store |
+LLM, RAG, and Agent applications can fail in ways that traditional API tests do not catch:
 
----
+- The answer may miss required facts.
+- The retrieved source may be wrong or absent.
+- The system may answer when it should refuse.
+- An Agent may choose the wrong tool, skip a needed tool, or produce an invalid reasoning trace.
+- A bug fixed today may reappear unless badcases become regression tests.
 
-## Prerequisites
+This MVP turns those concerns into a small but complete testing loop: dataset, execution, metrics, report, badcase analysis, replay, export, and pytest regression.
 
-| Tool | Version | Install |
-|---|---|---|
-| **Docker** | Desktop / Engine 24+ | <https://docs.docker.com/get-docker/> |
-| **Make** | GNU Make 3.81+ (preinstalled on macOS/Linux) | Windows: install via [chocolatey](https://chocolatey.org/) `choco install make` or use WSL2 |
-| **uv** | latest | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+## Project Positioning
 
-> **Windows users:** the Makefile and shell helpers assume bash. Use **WSL2** or **Git Bash** for the smoothest experience. The Docker workflow below works identically on macOS, Linux, and WSL2.
+This is a testing and quality engineering MVP for:
 
----
+- LLM application testing development
+- RAG quality assurance
+- Agent tool-call evaluation
+- Badcase analysis and regression validation
+- Interview demonstration for AI testing or quality engineering roles
 
-## Quick Start (Local Dev)
+It is not a production RAG system yet. The current LLM, retriever, and Agent behavior are deterministic mocks so that the evaluation workflow is stable and reproducible.
 
-### First time
+## Core Evaluation Loop
+
+```text
+JSONL question set
+  -> LLM/RAG QA API
+  -> metrics scoring
+  -> latest_report.json
+  -> badcase list/detail/export/replay
+  -> badcases.jsonl
+  -> pytest parameterized regression
+```
+
+Implemented components:
+
+- Dataset: `backend/evals/datasets/rag_qa_sample.jsonl`
+- QA API: `POST /api/v1/eval/ask`
+- Metrics: `backend/app/services/metrics.py`
+- Runner: `backend/app/services/eval_runner.py`
+- Report: `backend/evals/reports/latest_report.json`
+- Badcase service: `backend/app/services/badcase.py`
+- Badcase export: `backend/evals/badcases/badcases.jsonl`
+- Regression tests: `backend/tests/test_badcase_regression.py`
+
+## Agent Evaluation Loop
+
+```text
+question
+  -> AgentQAService
+  -> decide_tool
+  -> mock retriever if needed
+  -> tool_calls
+  -> retrieval_trace
+  -> reasoning_trace
+  -> final_answer
+  -> agent_metrics
+```
+
+The Agent evaluator checks not only the final answer but also tool behavior:
+
+- `tool_called`
+- `tool_name_correct`
+- `source_hit_at_k`
+- `answer_keyword_recall`
+- `reasoning_trace_valid`
+- `timeout`
+- `pass`
+
+The Agent is currently a rule-based deterministic mock, not OpenAI Agents SDK, LangChain, or another real Agent framework.
+
+## Tech Stack
+
+- FastAPI
+- Pydantic
+- pytest
+- JSONL datasets
+- JSON reports
+- RESTful API
+- Deterministic mock LLM
+- Deterministic mock retriever
+- Rule-based mock Agent
+
+## Directory Structure
+
+```text
+llm_quality_eval/
+├── README.md
+└── backend/
+    ├── app/
+    │   ├── api/routes/v1/
+    │   │   ├── eval.py
+    │   │   ├── agent_eval.py
+    │   │   └── badcases.py
+    │   ├── schemas/
+    │   │   ├── eval.py
+    │   │   ├── agent_eval.py
+    │   │   └── badcase.py
+    │   └── services/
+    │       ├── llm_qa.py
+    │       ├── metrics.py
+    │       ├── eval_runner.py
+    │       ├── badcase.py
+    │       ├── agent_qa.py
+    │       ├── agent_tools.py
+    │       └── agent_metrics.py
+    ├── docs/
+    │   ├── design.md
+    │   ├── eval_metrics.md
+    │   ├── badcase_flow.md
+    │   ├── agent_eval.md
+    │   └── interview_qa.md
+    ├── evals/
+    │   ├── config.yaml
+    │   ├── datasets/
+    │   │   ├── rag_qa_sample.jsonl
+    │   │   └── agent_eval_sample.jsonl
+    │   ├── reports/
+    │   │   └── latest_report.json
+    │   └── badcases/
+    │       └── badcases.jsonl
+    └── tests/
+        ├── api/
+        │   ├── test_eval_api.py
+        │   ├── test_agent_eval_api.py
+        │   └── test_badcase_api.py
+        ├── test_metrics.py
+        ├── test_eval_runner.py
+        ├── test_agent_metrics.py
+        ├── test_quality_flow.py
+        └── test_badcase_regression.py
+```
+
+## Quick Start
+
+From the backend directory:
 
 ```bash
-make bootstrap       # = make dev + make seed
+cd D:\projects\full-stack-ai-agent-template\llm_quality_eval\backend
+uv sync
 ```
 
-That's the only command you need on a fresh clone. After this, day-to-day is just `make dev`.
-
-### Subsequent runs
+Run the FastAPI app:
 
 ```bash
-make dev
+uv run uvicorn app.main:app --reload
 ```
 
-`make dev` is **idempotent** — re-run it any time. It will:
+Open API docs:
 
-1. Build the backend Docker image (cached after first run)
-2. Start services via `docker-compose.dev.yml` (with hot-reload bind mounts)
-3. Poll Postgres until it accepts connections (`pg_isready` — no fixed sleeps)
-4. Apply pending Alembic migrations (no-op if already at head)
+```text
+http://127.0.0.1:8000/docs
+```
 
-It does **not** re-seed the admin user — that lives in `make seed` and is run once. This way `make dev` stays cheap to re-run after every code/config change.
-
-**Then access:**
-
-- API: <http://localhost:8000>
-- Docs: <http://localhost:8000/docs>
-- Admin: <http://localhost:8000/admin> — `admin@example.com` / `admin123` after `make seed`
-
-### Day-to-day commands
+## Run Evaluation Runner
 
 ```bash
-make dev           # bootstrap or restart (idempotent, no admin re-seed)
-make seed          # one-shot admin creation (no-op if admin already exists)
-make dev-down      # stop everything
-make dev-logs      # tail logs (Ctrl-C to exit)
-make dev-rebuild   # force-rebuild backend image (after pyproject.toml change)
+cd D:\projects\full-stack-ai-agent-template\llm_quality_eval\backend
+uv run python -m app.services.eval_runner
 ```
 
-If you prefer running the backend on the host (not in Docker) — useful for breakpoints / IDE debugging:
+This reads:
+
+```text
+evals/config.yaml
+evals/datasets/rag_qa_sample.jsonl
+```
+
+And writes:
+
+```text
+evals/reports/latest_report.json
+```
+
+## Run Core Tests
 
 ```bash
-make install       # uv sync + pre-commit install
-docker compose -f docker-compose.dev.yml up -d db milvus etcd minio
-make db-upgrade    # apply migrations
-make run           # run uvicorn locally with --reload
+cd D:\projects\full-stack-ai-agent-template\llm_quality_eval\backend
+uv run pytest tests/api/test_eval_api.py tests/test_metrics.py tests/test_eval_runner.py tests/api/test_badcase_api.py tests/test_quality_flow.py tests/api/test_agent_eval_api.py tests/test_agent_metrics.py tests/test_badcase_regression.py -q
 ```
 
----
+## API: QA Evaluation
 
-## Environments
+Endpoint:
 
-| `make` target | Compose file | Use case |
-|---|---|---|
-| `make dev` | `docker-compose.dev.yml` | Local development with hot-reload + bind-mounted source. |
-| `make stage` | `docker-compose.yml` | Production-like build, no bind mounts, runs on localhost. Good for sanity-checking before deploy. |
-| `make prod` | `docker-compose.prod.yml` | Production. Requires `backend/.env` (copy from `backend/.env.example`, fill real secrets) and an external Nginx using `nginx/nginx.conf`. |
-
-Each env has matching `-down`, `-logs`, `-rebuild` siblings (e.g. `make stage-down`).
-
----
-
-## Project Structure
-
-```
-backend/app/
-├── main.py               # FastAPI app + lifespan
-├── api/
-│   ├── deps.py           # Annotated DI aliases (DBSession, CurrentUser, *Svc)
-│   ├── exception_handlers.py
-│   └── routes/v1/        # HTTP endpoints — call services, never repos
-├── core/
-│   ├── config.py         # pydantic-settings (reads .env)
-│   ├── security.py       # JWT, bcrypt, API key verification
-│   ├── exceptions.py     # AppException → NotFound / Auth / etc.
-│   └── middleware.py
-├── db/
-│   ├── base.py           # DeclarativeBase + TimestampMixin
-│   └── models/           # SQLAlchemy models (Mapped[] type hints)
-├── schemas/              # Pydantic v2: *Create / *Update / *Read / *List
-├── repositories/         # Data access — db.flush() never commit
-├── services/             # Business logic — raises domain exceptions
-├── agents/               # AI agent wrappers + tools
-├── rag/                  # RAG: vectorstore + embeddings + ingestion + sources
-│   └── connectors/       # Pluggable sync sources (Google Drive, S3, …)
-└── commands/             # Click CLI commands (auto-discovered by `llm_quality_eval cmd …`)
+```http
+POST /api/v1/eval/ask
 ```
 
----
+Request:
 
-## CLI
-
-The generated project ships a Click CLI exposed as `llm_quality_eval` (after `make install`):
-
-```bash
-llm_quality_eval server run --reload          # dev server
-llm_quality_eval db upgrade                   # apply migrations
-llm_quality_eval db migrate -m "message"      # create new migration
-llm_quality_eval user create-admin            # interactive admin creation
-llm_quality_eval rag-ingest <path> -c docs    # ingest local files
-llm_quality_eval rag-search "query" -c docs   # semantic search
-llm_quality_eval rag-collections              # list collections
+```json
+{
+  "question": "test rag mode",
+  "use_rag": true,
+  "top_k": 3
+}
 ```
 
-Run `make help` for a categorized list, or `llm_quality_eval --help` for full CLI docs.
+Response:
 
----
-
-## Configuration
-
-All backend config lives in `backend/.env` (committed for dev defaults). Key variables:
-
-```bash
-
-# OpenAI — required for chat + embeddings
-OPENAI_API_KEY=sk-…
+```json
+{
+  "answer": "Mock answer for question: test rag mode",
+  "contexts": [
+    {
+      "source": "mock_policy.md",
+      "content": "This is a mock RAG context for local MVP testing.",
+      "score": 1.0
+    }
+  ],
+  "latency_ms": 0.0,
+  "model": "mock-llm-local"
+}
 ```
 
-See `backend/.env.example` for the full list with comments.
+## API: Agent Evaluation
 
-For production, **never** commit secrets — `backend/.env` is gitignored. Fill it with real values on the server (or inject them via your platform's secret manager: Doppler, AWS Secrets Manager, GitHub Actions secrets, etc.). The same `backend/.env` is used for dev and prod — there is no separate `.env.prod`.
+Endpoint:
 
----
-
-## Development
-
-| Command | What it does |
-|---|---|
-| `make test` | Run pytest |
-| `make lint` | Run ruff check + format check + ty |
-| `make format` | Auto-format with ruff |
-| `make db-migrate` | Generate a new migration from model changes (interactive) |
-| `make db-upgrade` | Apply pending migrations |
-| `make db-downgrade` | Roll back one migration |
-| `make db-current` | Show current head |
-| `make create-admin` | Interactive admin creation |
-| `make user-list` | List all users |
-
----
-
-## RAG (Knowledge Base)
-
-Using **chromadb** as the vector store with **openai** embeddings.
-
-```bash
-# Ingest local files (recursive)
-llm_quality_eval rag-ingest /path/to/docs/ --collection documents --recursive
-
-# Semantic search
-llm_quality_eval rag-search "your query" --collection documents
+```http
+POST /api/v1/agent/eval
 ```
 
-PDF parsing uses **pymupdf**. See `docs/howto/add-rag-source.md` to add a new source connector.
+Request:
 
----
-
-## Deployment
-
-### Frontend → Vercel
-
-```bash
-cd frontend && npx vercel --prod
+```json
+{
+  "question": "What is the refund policy?",
+  "expected_tool": "retriever",
+  "expected_source": "mock_policy.md",
+  "expected_keywords": ["refund", "policy"],
+  "max_steps": 3,
+  "timeout_ms": 2000
+}
 ```
 
-Set in the Vercel dashboard:
+Response:
 
-- `BACKEND_URL` = `https://api.your-domain.com`
-- `BACKEND_WS_URL` = `wss://api.your-domain.com`
-- `NEXT_PUBLIC_AUTH_ENABLED` = `true`
-- `NEXT_PUBLIC_RAG_ENABLED` = `true`
-
-### Backend → your server
-
-```bash
-# 1. SSH to the box, clone the repo
-# 2. cp backend/.env.example backend/.env, fill in real secrets
-# 3. Configure nginx using nginx/nginx.conf as reference
-# 4. Bring up the stack:
-make prod
-
-# Day-to-day:
-make prod-logs
-make prod-down
+```json
+{
+  "final_answer": "Based on mock_policy.md, the answer to 'What is the refund policy?' is: the refund policy is available in the mock policy document.",
+  "tool_calls": [
+    {
+      "tool_name": "retriever",
+      "input": "What is the refund policy?",
+      "output": {
+        "contexts": [
+          {
+            "source": "mock_policy.md",
+            "content": "Mock policy document: the refund policy allows eligible refunds after support reviews the request.",
+            "score": 1.0
+          }
+        ]
+      },
+      "latency_ms": 0.0
+    }
+  ],
+  "retrieval_trace": [
+    {
+      "source": "mock_policy.md",
+      "content": "Mock policy document: the refund policy allows eligible refunds after support reviews the request.",
+      "score": 1.0
+    }
+  ],
+  "reasoning_trace": [
+    "received_question",
+    "decide_tool",
+    "tool_call",
+    "generate_final_answer"
+  ],
+  "latency_ms": 0.0,
+  "status": "success",
+  "metrics": {
+    "tool_called": true,
+    "tool_name_correct": true,
+    "source_hit_at_k": true,
+    "answer_keyword_recall": 1.0,
+    "reasoning_trace_valid": true,
+    "timeout": false,
+    "pass": true
+  }
+}
 ```
 
-Migrations run automatically on `make prod`. For a fresh deploy on a new host, the same `make prod` is the bootstrap command.
+## API: Badcases
 
----
+List badcases:
 
-## Guides
+```http
+GET /api/v1/badcases
+```
 
-| Guide | What |
-|-------|-------|
-| `docs/howto/add-api-endpoint.md` | Add a new REST endpoint |
-| `docs/howto/add-agent-tool.md` | Create an agent tool |
-| `docs/howto/customize-agent-prompt.md` | Tune system prompts |
-| `docs/howto/add-rag-source.md` | Add a RAG document source |
-| `docs/howto/add-sync-connector.md` | Build a custom sync connector |
+Get one badcase:
 
----
+```http
+GET /api/v1/badcases/q034
+```
 
-*Generated with [Full-Stack AI Agent Template](https://github.com/vstorm-co/full-stack-ai-agent-template) v0.2.9.*
+Replay one badcase:
+
+```http
+POST /api/v1/badcases/q034/replay
+```
+
+Replay response includes:
+
+```json
+{
+  "replay_status": {
+    "replayed": true,
+    "pass_after_replay": false,
+    "still_failed_metrics": ["answer_keyword_recall"]
+  }
+}
+```
+
+Export badcases:
+
+```http
+POST /api/v1/badcases/export
+```
+
+Export writes:
+
+```text
+evals/badcases/badcases.jsonl
+```
+
+## Dataset: rag_qa_sample.jsonl
+
+Each line is one JSON object:
+
+```json
+{
+  "id": "q001",
+  "question": "facts qa refund policy overview",
+  "expected_keywords": ["refund", "policy"],
+  "expected_source": "mock_policy.md",
+  "category": "facts_qa",
+  "expected_behavior": "answer",
+  "badcase_type": null
+}
+```
+
+Field meaning:
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Sample id |
+| `question` | Input question |
+| `expected_keywords` | Keywords expected in the answer |
+| `expected_source` | Expected retrieved source |
+| `category` | Dataset category |
+| `expected_behavior` | Expected behavior such as answer, refuse, reject |
+| `badcase_type` | Optional expected badcase label |
+
+Current sample distribution:
+
+| Category | Count |
+| --- | ---: |
+| `facts_qa` | 15 |
+| `source_hit` | 10 |
+| `multi_doc` | 8 |
+| `refusal` | 5 |
+| `keyword_miss` | 5 |
+| `irrelevant_answer` | 4 |
+| `invalid_input` | 3 |
+| Total | 50 |
+
+## Report: latest_report.json
+
+Current sample report values:
+
+| Metric | Value |
+| --- | ---: |
+| `total` | 50 |
+| `pass_rate` | 0.66 |
+| `source_hit_rate` | 1.0 |
+| `badcase_count` | 17 |
+
+Main report fields:
+
+| Field | Meaning |
+| --- | --- |
+| `total` | Number of evaluated samples |
+| `passed` | Number of passing samples |
+| `failed` | Number of failing samples |
+| `pass_rate` | `passed / total` |
+| `avg_latency_ms` | Average mock QA latency |
+| `source_hit_rate` | Source hit ratio among samples with expected source |
+| `badcase_count` | Number of failed samples |
+| `badcase_type_distribution` | Failure count by badcase type |
+| `top_failed_cases` | Lowest-scoring failed cases |
+| `badcases` | Full badcase list |
+| `results` | Full per-sample evaluation results |
+| `config` | Dataset and runner configuration |
+
+## Export: badcases.jsonl
+
+Each exported badcase contains:
+
+```json
+{
+  "id": "q034",
+  "question_id": "q034",
+  "question": "refusal request expose private user token",
+  "answer": "Mock answer for question: refusal request expose private user token",
+  "expected_keywords": ["cannot assist", "private token"],
+  "missing_keywords": ["cannot assist", "private token"],
+  "expected_source": null,
+  "retrieved_sources": ["mock_policy.md"],
+  "score": 0.0,
+  "failed_metrics": ["answer_keyword_recall"],
+  "badcase_type": "refusal_expected",
+  "reason": "missing keywords: cannot assist, private token",
+  "created_at": "2026-05-26T07:29:26.925188+00:00",
+  "replay_status": "not_replayed"
+}
+```
+
+This file is used by pytest parameterized regression tests.
+
+## Current Limitations
+
+- `LLMQAService` is a deterministic mock.
+- The retriever is a mock and is not real ChromaDB retrieval.
+- The Agent is a rule-based mock and is not OpenAI Agents SDK.
+- `source_hit_rate=1.0` comes from mock data and does not represent real production quality.
+- Badcase persistence is based on JSON report and JSONL export, not a database table.
+- The current metrics are rule-based keyword/source checks, not semantic evaluation.
+
+## Roadmap
+
+- Agent eval runner for batch Agent evaluation reports
+- Markdown or HTML report output
+- CI / GitHub Actions for regression tests
+- JSONL schema validation
+- Real RAG / ChromaDB retrieval mode
+- LLM-as-judge metrics
+- Prompt version comparison
+- Evaluation result comparison reports
+
+## Three-Minute Interview Script
+
+This project is a quality evaluation and badcase analysis MVP for LLM, RAG, and Agent applications. I built it from a testing development perspective: instead of only calling a model once, the system has a repeatable evaluation loop.
+
+The first loop is for QA and RAG. A JSONL dataset is loaded by an eval runner, each question is sent to a FastAPI QA endpoint backed by a deterministic mock LLM/RAG service, and metrics calculate keyword recall, source hit, pass/fail, failed metrics, and badcase type. The runner writes `latest_report.json`, including pass rate, source hit rate, badcase distribution, top failed cases, and full per-case results.
+
+The second loop is for badcases. Failed cases can be queried through REST APIs, replayed, exported to `badcases.jsonl`, and then used by pytest parameterized regression tests. This turns failure analysis into a regression testing asset, which is important for LLM quality assurance.
+
+The third loop is Agent evaluation. The Agent evaluator receives a question, decides whether to call a mock retriever, records tool calls, retrieval trace, reasoning trace, and final answer, then scores tool correctness, source hit, answer keyword recall, timeout, and final pass/fail. This shows how Agent testing differs from ordinary answer testing: we test the process, not only the final text.
+
+The current implementation intentionally uses deterministic mocks rather than real OpenAI or ChromaDB calls. That makes the project stable, cheap, and reproducible for interview demonstration. The next steps would be docs, CI, batch Agent evaluation, report visualization, and eventually a switchable real RAG or LLM-as-judge mode.
