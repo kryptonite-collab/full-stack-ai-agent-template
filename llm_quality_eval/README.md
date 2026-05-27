@@ -451,14 +451,3 @@ This file is used by pytest parameterized regression tests.
 - Prompt version comparison
 - Evaluation result comparison reports
 
-## Three-Minute Interview Script
-
-This project is a quality evaluation and badcase analysis MVP for LLM, RAG, and Agent applications. I built it from a testing development perspective: instead of only calling a model once, the system has a repeatable evaluation loop.
-
-The first loop is for QA and RAG. A JSONL dataset is loaded by an eval runner, each question is sent to a FastAPI QA endpoint backed by a deterministic mock LLM/RAG service, and metrics calculate keyword recall, source hit, pass/fail, failed metrics, and badcase type. The runner writes `latest_report.json`, including pass rate, source hit rate, badcase distribution, top failed cases, and full per-case results.
-
-The second loop is for badcases. Failed cases can be queried through REST APIs, replayed, exported to `badcases.jsonl`, and then used by pytest parameterized regression tests. This turns failure analysis into a regression testing asset, which is important for LLM quality assurance.
-
-The third loop is Agent evaluation. The Agent evaluator receives a question, decides whether to call a mock retriever, records tool calls, retrieval trace, reasoning trace, and final answer, then scores tool correctness, source hit, answer keyword recall, timeout, and final pass/fail. This shows how Agent testing differs from ordinary answer testing: we test the process, not only the final text.
-
-The current implementation intentionally uses deterministic mocks rather than real OpenAI or ChromaDB calls. That makes the project stable, cheap, and reproducible for interview demonstration. The next steps would be docs, CI, batch Agent evaluation, report visualization, and eventually a switchable real RAG or LLM-as-judge mode.
