@@ -452,14 +452,3 @@ evals/badcases/badcases.jsonl
 - Prompt 版本对比：支持不同 prompt 的质量对比。
 - 评测结果 diff：对比多次评测结果变化。
 
-## 中文面试 3 分钟介绍
-
-这个项目是一个面向 LLM、RAG 和 Agent 应用的质量评测与 Badcase 分析 MVP。我做它的出发点不是简单调用一次大模型，而是从测试开发和质量保障角度，搭建一条可复现的评测闭环。
-
-第一条主线是 QA/RAG 评测。项目用 JSONL 存放评测问题集，通过 FastAPI 的 `/api/v1/eval/ask` 接口调用本地 deterministic mock QA/RAG 服务，然后用 metrics 自动计算 `answer_keyword_recall`、`source_hit_at_k`、`pass/fail`、`failed_metrics` 等指标。批量 runner 会生成 `latest_report.json`，里面包含 `pass_rate`、`source_hit_rate`、`badcase_count`、Badcase 类型分布和 top failed cases。当前样例报告是 50 条数据，`pass_rate=0.66`，`source_hit_rate=1.0`，`badcase_count=17`。
-
-第二条主线是 Badcase 闭环。评测失败的样本会进入 report 的 badcases 列表，可以通过 API 查询、查看详情、Replay 复测，也可以导出成 `badcases.jsonl`。导出的 Badcase 又可以被 pytest 参数化测试读取，重新调用 QA 服务并评分。这样 Badcase 不只是记录，而是可以变成持续回归测试样本。
-
-第三条主线是 Agent 评测。项目提供 `/api/v1/agent/eval`，问题进入 Agent 后会先做 `decide_tool`，根据规则决定是否调用 mock retriever，并记录 `tool_calls`、`retrieval_trace`、`reasoning_trace` 和 `final_answer`。Agent metrics 不只看最终答案，还会检查工具是否调用、工具名是否正确、source 是否命中、reasoning trace 是否有效、是否 timeout，以及最终是否通过。
-
-目前项目刻意使用 deterministic mock，不真实调用 OpenAI，也不接真实 ChromaDB。这样做是为了保证本地可复现、无网络依赖、无费用，并优先把评测体系、报告结构、Badcase 回归和 Agent 过程评测这些测试开发核心能力打通。后续可以扩展 Agent batch runner、HTML 报告、CI、JSONL schema 校验、真实 RAG 和 LLM-as-judge。
